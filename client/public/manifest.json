@@ -1,0 +1,50 @@
+{
+  "name": "StreamSync Music Player",
+  "short_name": "StreamSync",
+  "description": "Stream ad-free music from YouTube and SoundCloud",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#18181b",
+  "theme_color": "#a855f7",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["music", "entertainment"],
+  "screenshots": [
+    {
+      "src": "/screenshot.png",
+      "sizes": "1280x720",
+      "type": "image/png"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Search Music",
+      "short_name": "Search",
+      "description": "Search for music tracks",
+      "url": "/",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "My Library",
+      "short_name": "Library",
+      "description": "View your library",
+      "url": "/library",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    }
+  ],
+  "prefer_related_applications": false
+}

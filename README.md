@@ -5,13 +5,20 @@ A Progressive Web App (PWA) that allows you to search and stream music from YouT
 ## Features
 
 - 🎵 **Multi-Source Search**: Search for music from both YouTube and SoundCloud
-- 📱 **PWA Support**: Install on your phone's home screen for offline access
+- 📱 **PWA Support**: Install on your phone's home screen with app shortcuts
 - 🎨 **Modern UI**: Beautiful dark theme with gradient accents
-- 🎧 **Audio Controls**: Full playback controls with progress bar, volume control, and seek functionality
+- 🎧 **Enhanced Audio Player**:
+  - Play/pause controls
+  - Volume control with slider
+  - Persistent player across navigation
+  - Error handling for restricted videos
+  - Media session integration for lock screen controls
 - 💾 **Track History**: Save and track your listening history (when authenticated)
 - ⭐ **Favorites**: Mark tracks as favorites for quick access
 - 📋 **Playlists**: Create and manage custom playlists
 - 🔐 **User Authentication**: Sign in to save your preferences and history
+- 🛡️ **Rate Limiting**: API protection with 30 requests/minute per user
+- 🚀 **Performance**: Smart caching with service worker for faster load times
 
 ## Installation on Mobile
 
@@ -74,16 +81,42 @@ SoundCloud streaming is implemented but may have similar limitations based on th
 - MySQL/TiDB database
 
 ### Setup
-```bash
-# Install dependencies
-pnpm install
 
-# Push database schema
-pnpm db:push
+1. **Install dependencies**
+   ```bash
+   pnpm install
+   ```
 
-# Start development server
-pnpm dev
-```
+2. **Configure environment variables**
+
+   Copy the example environment file and update it with your settings:
+   ```bash
+   cp .env.example .env
+   ```
+
+   Required variables:
+   - `DATABASE_URL` - MySQL/TiDB connection string (required)
+   - `JWT_SECRET` - Secret key for JWT tokens (required for auth)
+
+   Optional variables:
+   - `PORT` - Server port (default: 3000)
+   - `OAUTH_SERVER_URL` - External OAuth server
+   - `VITE_APP_ID` - Application identifier
+   - `OWNER_OPEN_ID` - Admin user OpenID
+
+3. **Set up database**
+   ```bash
+   # Push database schema
+   pnpm db:push
+   ```
+
+4. **Start development server**
+   ```bash
+   # Start both client and server
+   pnpm dev
+   ```
+
+   The app will be available at `http://localhost:3000`
 
 ### Testing
 ```bash
@@ -126,14 +159,29 @@ The app uses the following main tables:
 - `playlists.addTrack`: Add track to playlist
 - `playlists.removeTrack`: Remove track from playlist
 
+## Recent Improvements
+
+### Version 2.0
+- ✅ Enhanced player with full playback controls (play/pause, volume, close)
+- ✅ Improved error handling for streaming failures
+- ✅ Added rate limiting to prevent API abuse (30 req/min)
+- ✅ Better PWA support with app shortcuts and improved caching
+- ✅ Removed unused features to reduce complexity
+- ✅ Added comprehensive logging for debugging
+- ✅ Input validation and timeout handling for API calls
+- ✅ Improved service worker with separate static/dynamic caches
+- ✅ Environment variable documentation with .env.example
+
 ## Contributing
 
 This is a proof-of-concept application demonstrating PWA capabilities and multi-source music search. Contributions are welcome, especially for:
 
 - Improving YouTube/SoundCloud streaming reliability
-- Adding more music sources
+- Adding more music sources (Spotify, Apple Music, etc.)
 - Enhancing offline capabilities
 - UI/UX improvements
+- Adding queue management features
+- Implementing advanced search filters
 
 ## Legal Notice
 
