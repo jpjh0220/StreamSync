@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, ReactNode, useCallback } from 'react';
 
 interface Track {
   id: string;
@@ -9,19 +9,172 @@ interface Track {
   source: "youtube" | "soundcloud";
 }
 
+type RepeatMode = 'off' | 'one' | 'all';
+
 interface PlayerContextType {
   currentTrack: Track | null;
   setCurrentTrack: (track: Track | null) => void;
+  queue: Track[];
+  addToQueue: (track: Track) => void;
+  removeFromQueue: (index: number) => void;
+  clearQueue: () => void;
+  playNext: () => void;
+  playPrevious: () => void;
+  currentIndex: number;
+  hasNext: boolean;
+  hasPrevious: boolean;
+  playTrack: (track: Track, addToQueueIfNotPlaying?: boolean) => void;
+  shuffle: boolean;
+  toggleShuffle: () => void;
+  repeatMode: RepeatMode;
+  cycleRepeatMode: () => void;
   favorites: Set<string>;
   toggleFavorite: (sourceId: string) => void;
   isFavorite: (sourceId: string) => boolean;
+  recentSearches: string[];
+  addRecentSearch: (query: string) => void;
+  clearRecentSearches: () => void;
 }
 
 const PlayerContext = createContext<PlayerContextType | undefined>(undefined);
 
 export function PlayerProvider({ children }: { children: ReactNode }) {
   const [currentTrack, setCurrentTrack] = useState<Track | null>(null);
+  const [queue, setQueue] = useState<Track[]>([]);
+  const [originalQueue, setOriginalQueue] = useState<Track[]>([]); // For shuffle
+  const [currentIndex, setCurrentIndex] = useState<number>(-1);
+  const [shuffle, setShuffle] = useState<boolean>(false);
+  const [repeatMode, setRepeatMode] = useState<RepeatMode>('off');
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
+  const [recentSearches, setRecentSearches] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('recentSearches');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const playTrack = useCallback((track: Track, addToQueueIfNotPlaying: boolean = true) => {
+    if (addToQueueIfNotPlaying && !currentTrack) {
+      // First track, start a new queue
+      setQueue([track]);
+      setCurrentIndex(0);
+    } else if (addToQueueIfNotPlaying) {
+      // Add to queue and play immediately
+      const newQueue = [...queue];
+      newQueue.splice(currentIndex + 1, 0, track);
+      setQueue(newQueue);
+      setCurrentIndex(currentIndex + 1);
+    }
+    setCurrentTrack(track);
+  }, [currentTrack, queue, currentIndex]);
+
+  const addToQueue = useCallback((track: Track) => {
+    setQueue(prev => [...prev, track]);
+    if (!currentTrack) {
+      setCurrentTrack(track);
+      setCurrentIndex(0);
+    }
+  }, [currentTrack]);
+
+  const removeFromQueue = useCallback((index: number) => {
+    setQueue(prev => prev.filter((_, i) => i !== index));
+    if (index < currentIndex) {
+      setCurrentIndex(prev => prev - 1);
+    } else if (index === currentIndex) {
+      // If removing current track, play next or clear
+      if (queue.length > index + 1) {
+        setCurrentTrack(queue[index + 1]);
+      } else if (queue.length > 0 && index > 0) {
+        setCurrentTrack(queue[index - 1]);
+        setCurrentIndex(index - 1);
+      } else {
+        setCurrentTrack(null);
+        setCurrentIndex(-1);
+      }
+    }
+  }, [currentIndex, queue]);
+
+  const clearQueue = useCallback(() => {
+    setQueue([]);
+    setCurrentIndex(-1);
+    setCurrentTrack(null);
+  }, []);
+
+  const playNext = useCallback(() => {
+    if (repeatMode === 'one' && currentTrack) {
+      // Repeat current track
+      setCurrentTrack({ ...currentTrack });
+      return;
+    }
+
+    if (currentIndex < queue.length - 1) {
+      const nextIndex = currentIndex + 1;
+      setCurrentIndex(nextIndex);
+      setCurrentTrack(queue[nextIndex]);
+    } else if (repeatMode === 'all' && queue.length > 0) {
+      // Loop back to start
+      setCurrentIndex(0);
+      setCurrentTrack(queue[0]);
+    }
+  }, [currentIndex, queue, repeatMode, currentTrack]);
+
+  const playPrevious = useCallback(() => {
+    if (currentIndex > 0) {
+      const prevIndex = currentIndex - 1;
+      setCurrentIndex(prevIndex);
+      setCurrentTrack(queue[prevIndex]);
+    }
+  }, [currentIndex, queue]);
+
+  const hasNext = currentIndex < queue.length - 1 || repeatMode === 'all';
+  const hasPrevious = currentIndex > 0;
+
+  const toggleShuffle = useCallback(() => {
+    if (!shuffle) {
+      // Enable shuffle - save original queue and shuffle
+      setOriginalQueue([...queue]);
+      const shuffled = [...queue];
+      const currentTrackItem = shuffled[currentIndex];
+
+      // Fisher-Yates shuffle
+      for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+      }
+
+      // Move current track to first position
+      if (currentTrackItem) {
+        const newIndex = shuffled.indexOf(currentTrackItem);
+        if (newIndex !== -1 && newIndex !== 0) {
+          shuffled.splice(newIndex, 1);
+          shuffled.unshift(currentTrackItem);
+        }
+        setCurrentIndex(0);
+      }
+
+      setQueue(shuffled);
+      setShuffle(true);
+    } else {
+      // Disable shuffle - restore original queue
+      if (originalQueue.length > 0) {
+        const currentTrackItem = queue[currentIndex];
+        setQueue(originalQueue);
+        const newIndex = originalQueue.findIndex(t => t.id === currentTrackItem?.id);
+        setCurrentIndex(newIndex !== -1 ? newIndex : 0);
+      }
+      setShuffle(false);
+    }
+  }, [shuffle, queue, originalQueue, currentIndex]);
+
+  const cycleRepeatMode = useCallback(() => {
+    setRepeatMode(current => {
+      if (current === 'off') return 'all';
+      if (current === 'all') return 'one';
+      return 'off';
+    });
+  }, []);
 
   const toggleFavorite = (sourceId: string) => {
     setFavorites(prev => {
@@ -39,13 +192,46 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     return favorites.has(sourceId);
   };
 
+  const addRecentSearch = useCallback((query: string) => {
+    if (!query.trim()) return;
+
+    setRecentSearches(prev => {
+      const filtered = prev.filter(q => q.toLowerCase() !== query.toLowerCase());
+      const newSearches = [query, ...filtered].slice(0, 10);
+      localStorage.setItem('recentSearches', JSON.stringify(newSearches));
+      return newSearches;
+    });
+  }, []);
+
+  const clearRecentSearches = useCallback(() => {
+    setRecentSearches([]);
+    localStorage.removeItem('recentSearches');
+  }, []);
+
   return (
     <PlayerContext.Provider value={{
       currentTrack,
       setCurrentTrack,
+      queue,
+      addToQueue,
+      removeFromQueue,
+      clearQueue,
+      playNext,
+      playPrevious,
+      currentIndex,
+      hasNext,
+      hasPrevious,
+      playTrack,
+      shuffle,
+      toggleShuffle,
+      repeatMode,
+      cycleRepeatMode,
       favorites,
       toggleFavorite,
       isFavorite,
+      recentSearches,
+      addRecentSearch,
+      clearRecentSearches,
     }}>
       {children}
     </PlayerContext.Provider>
