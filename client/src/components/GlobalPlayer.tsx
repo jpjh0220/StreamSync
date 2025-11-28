@@ -1,13 +1,16 @@
 import { usePlayer } from "@/contexts/PlayerContext";
 import { Card } from "./ui/card";
 import { Button } from "./ui/button";
-import { Heart, Play, Pause, Volume2, VolumeX, X, SkipBack, SkipForward, ListMusic } from "lucide-react";
+import { Heart, Play, Pause, Volume2, VolumeX, X, SkipBack, SkipForward, ListMusic, Shuffle, Repeat, Repeat1, Save } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { useEffect, useState, useRef, useCallback } from "react";
 import { Slider } from "./ui/slider";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "./ui/sheet";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "./ui/dialog";
+import { Input } from "./ui/input";
+import { Label } from "./ui/label";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 
 export function GlobalPlayer() {
@@ -24,6 +27,10 @@ export function GlobalPlayer() {
     queue,
     removeFromQueue,
     currentIndex,
+    shuffle,
+    toggleShuffle,
+    repeatMode,
+    cycleRepeatMode,
   } = usePlayer();
   const toggleFavoriteMutation = trpc.tracks.toggleFavorite.useMutation();
 
@@ -31,7 +38,14 @@ export function GlobalPlayer() {
   const [isMuted, setIsMuted] = useState(false);
   const [volume, setVolume] = useState(100);
   const [error, setError] = useState(false);
+  const [playlistName, setPlaylistName] = useState("");
+  const [playlistDescription, setPlaylistDescription] = useState("");
+  const [isSavingPlaylist, setIsSavingPlaylist] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+
+  const createPlaylistMutation = trpc.playlists.create.useMutation();
+  const addTrackToPlaylistMutation = trpc.playlists.addTrack.useMutation();
+  const saveTrackMutation = trpc.tracks.save.useMutation();
 
   const handleToggleFavorite = async () => {
     if (!currentTrack) return;
@@ -144,6 +158,64 @@ export function GlobalPlayer() {
     setError(false);
   };
 
+  const handleSaveQueueAsPlaylist = async () => {
+    if (!user) {
+      toast.error("Please sign in to create playlists");
+      return;
+    }
+
+    if (!playlistName.trim()) {
+      toast.error("Please enter a playlist name");
+      return;
+    }
+
+    if (queue.length === 0) {
+      toast.error("Queue is empty");
+      return;
+    }
+
+    setIsSavingPlaylist(true);
+
+    try {
+      // Create playlist
+      const playlist = await createPlaylistMutation.mutateAsync({
+        name: playlistName.trim(),
+        description: playlistDescription.trim() || undefined,
+      });
+
+      // Save all tracks and add to playlist
+      for (let i = 0; i < queue.length; i++) {
+        const track = queue[i];
+
+        // Save track first
+        const savedTrack = await saveTrackMutation.mutateAsync({
+          source: track.source,
+          sourceId: track.id,
+          title: track.title,
+          artist: track.artist,
+          duration: track.duration,
+          thumbnail: track.thumbnail,
+        });
+
+        // Add to playlist
+        await addTrackToPlaylistMutation.mutateAsync({
+          playlistId: playlist.id,
+          trackId: savedTrack.id,
+          position: i,
+        });
+      }
+
+      toast.success(`Playlist "${playlistName}" created with ${queue.length} tracks!`);
+      setPlaylistName("");
+      setPlaylistDescription("");
+    } catch (error) {
+      console.error('Save playlist error:', error);
+      toast.error("Failed to create playlist");
+    } finally {
+      setIsSavingPlaylist(false);
+    }
+  };
+
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
@@ -187,6 +259,29 @@ export function GlobalPlayer() {
     setIsPlaying(true);
     setError(false);
   }, [currentTrack?.id]);
+
+  // Auto-play next track when video ends
+  useEffect(() => {
+    if (!iframeRef.current) return;
+
+    const handleMessage = (event: MessageEvent) => {
+      try {
+        const data = JSON.parse(event.data);
+        // YouTube sends state change events: 0 = ended, 1 = playing, 2 = paused
+        if (data.event === 'onStateChange' && data.info === 0) {
+          // Video ended - play next if available
+          if (hasNext || repeatMode !== 'off') {
+            playNext();
+          }
+        }
+      } catch {
+        // Ignore parse errors
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [hasNext, playNext, repeatMode]);
 
   if (!currentTrack) return null;
 
@@ -289,6 +384,32 @@ export function GlobalPlayer() {
                 <SkipForward className={`w-4 h-4 ${hasNext ? 'text-white' : 'text-zinc-600'}`} />
               </Button>
 
+              {/* Shuffle */}
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={toggleShuffle}
+                className="h-8 w-8"
+                title={shuffle ? "Disable shuffle" : "Enable shuffle"}
+              >
+                <Shuffle className={`w-4 h-4 ${shuffle ? 'text-purple-400' : 'text-zinc-400'}`} />
+              </Button>
+
+              {/* Repeat */}
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={cycleRepeatMode}
+                className="h-8 w-8"
+                title={repeatMode === 'off' ? 'Repeat off' : repeatMode === 'all' ? 'Repeat all' : 'Repeat one'}
+              >
+                {repeatMode === 'one' ? (
+                  <Repeat1 className="w-4 h-4 text-purple-400" />
+                ) : (
+                  <Repeat className={`w-4 h-4 ${repeatMode === 'all' ? 'text-purple-400' : 'text-zinc-400'}`} />
+                )}
+              </Button>
+
               {/* Favorite */}
               <Button
                 size="icon"
@@ -319,10 +440,63 @@ export function GlobalPlayer() {
                 </SheetTrigger>
                 <SheetContent side="right" className="w-full sm:w-96 bg-zinc-900 border-zinc-800">
                   <SheetHeader>
-                    <SheetTitle className="text-white">Queue ({queue.length})</SheetTitle>
-                    <SheetDescription className="text-zinc-400">
-                      Up next tracks
-                    </SheetDescription>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <SheetTitle className="text-white">Queue ({queue.length})</SheetTitle>
+                        <SheetDescription className="text-zinc-400">
+                          Up next tracks
+                        </SheetDescription>
+                      </div>
+                      {queue.length > 0 && (
+                        <Dialog>
+                          <DialogTrigger asChild>
+                            <Button size="sm" variant="outline" className="gap-2">
+                              <Save className="w-4 h-4" />
+                              Save
+                            </Button>
+                          </DialogTrigger>
+                          <DialogContent className="bg-zinc-900 border-zinc-800 text-white">
+                            <DialogHeader>
+                              <DialogTitle>Save Queue as Playlist</DialogTitle>
+                              <DialogDescription className="text-zinc-400">
+                                Create a new playlist from your current queue ({queue.length} tracks)
+                              </DialogDescription>
+                            </DialogHeader>
+                            <div className="space-y-4 py-4">
+                              <div className="space-y-2">
+                                <Label htmlFor="playlist-name">Playlist Name</Label>
+                                <Input
+                                  id="playlist-name"
+                                  placeholder="My Awesome Mix"
+                                  value={playlistName}
+                                  onChange={(e) => setPlaylistName(e.target.value)}
+                                  className="bg-zinc-800 border-zinc-700 text-white"
+                                />
+                              </div>
+                              <div className="space-y-2">
+                                <Label htmlFor="playlist-description">Description (optional)</Label>
+                                <Input
+                                  id="playlist-description"
+                                  placeholder="The best tracks..."
+                                  value={playlistDescription}
+                                  onChange={(e) => setPlaylistDescription(e.target.value)}
+                                  className="bg-zinc-800 border-zinc-700 text-white"
+                                />
+                              </div>
+                            </div>
+                            <DialogFooter>
+                              <Button
+                                onClick={handleSaveQueueAsPlaylist}
+                                disabled={isSavingPlaylist || !playlistName.trim()}
+                                className="bg-gradient-to-r from-purple-600 to-pink-600"
+                              >
+                                {isSavingPlaylist ? "Creating..." : "Create Playlist"}
+                              </Button>
+                            </DialogFooter>
+                          </DialogContent>
+                        </Dialog>
+                      )}
+                    </div>
                   </SheetHeader>
                   <div className="mt-4 space-y-2 max-h-[calc(100vh-200px)] overflow-y-auto">
                     {queue.length === 0 ? (

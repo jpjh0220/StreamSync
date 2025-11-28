@@ -9,6 +9,8 @@ interface Track {
   source: "youtube" | "soundcloud";
 }
 
+type RepeatMode = 'off' | 'one' | 'all';
+
 interface PlayerContextType {
   currentTrack: Track | null;
   setCurrentTrack: (track: Track | null) => void;
@@ -22,6 +24,10 @@ interface PlayerContextType {
   hasNext: boolean;
   hasPrevious: boolean;
   playTrack: (track: Track, addToQueueIfNotPlaying?: boolean) => void;
+  shuffle: boolean;
+  toggleShuffle: () => void;
+  repeatMode: RepeatMode;
+  cycleRepeatMode: () => void;
   favorites: Set<string>;
   toggleFavorite: (sourceId: string) => void;
   isFavorite: (sourceId: string) => boolean;
@@ -35,7 +41,10 @@ const PlayerContext = createContext<PlayerContextType | undefined>(undefined);
 export function PlayerProvider({ children }: { children: ReactNode }) {
   const [currentTrack, setCurrentTrack] = useState<Track | null>(null);
   const [queue, setQueue] = useState<Track[]>([]);
+  const [originalQueue, setOriginalQueue] = useState<Track[]>([]); // For shuffle
   const [currentIndex, setCurrentIndex] = useState<number>(-1);
+  const [shuffle, setShuffle] = useState<boolean>(false);
+  const [repeatMode, setRepeatMode] = useState<RepeatMode>('off');
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
   const [recentSearches, setRecentSearches] = useState<string[]>(() => {
     try {
@@ -94,12 +103,22 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const playNext = useCallback(() => {
+    if (repeatMode === 'one' && currentTrack) {
+      // Repeat current track
+      setCurrentTrack({ ...currentTrack });
+      return;
+    }
+
     if (currentIndex < queue.length - 1) {
       const nextIndex = currentIndex + 1;
       setCurrentIndex(nextIndex);
       setCurrentTrack(queue[nextIndex]);
+    } else if (repeatMode === 'all' && queue.length > 0) {
+      // Loop back to start
+      setCurrentIndex(0);
+      setCurrentTrack(queue[0]);
     }
-  }, [currentIndex, queue]);
+  }, [currentIndex, queue, repeatMode, currentTrack]);
 
   const playPrevious = useCallback(() => {
     if (currentIndex > 0) {
@@ -109,8 +128,53 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }
   }, [currentIndex, queue]);
 
-  const hasNext = currentIndex < queue.length - 1;
+  const hasNext = currentIndex < queue.length - 1 || repeatMode === 'all';
   const hasPrevious = currentIndex > 0;
+
+  const toggleShuffle = useCallback(() => {
+    if (!shuffle) {
+      // Enable shuffle - save original queue and shuffle
+      setOriginalQueue([...queue]);
+      const shuffled = [...queue];
+      const currentTrackItem = shuffled[currentIndex];
+
+      // Fisher-Yates shuffle
+      for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+      }
+
+      // Move current track to first position
+      if (currentTrackItem) {
+        const newIndex = shuffled.indexOf(currentTrackItem);
+        if (newIndex !== -1 && newIndex !== 0) {
+          shuffled.splice(newIndex, 1);
+          shuffled.unshift(currentTrackItem);
+        }
+        setCurrentIndex(0);
+      }
+
+      setQueue(shuffled);
+      setShuffle(true);
+    } else {
+      // Disable shuffle - restore original queue
+      if (originalQueue.length > 0) {
+        const currentTrackItem = queue[currentIndex];
+        setQueue(originalQueue);
+        const newIndex = originalQueue.findIndex(t => t.id === currentTrackItem?.id);
+        setCurrentIndex(newIndex !== -1 ? newIndex : 0);
+      }
+      setShuffle(false);
+    }
+  }, [shuffle, queue, originalQueue, currentIndex]);
+
+  const cycleRepeatMode = useCallback(() => {
+    setRepeatMode(current => {
+      if (current === 'off') return 'all';
+      if (current === 'all') return 'one';
+      return 'off';
+    });
+  }, []);
 
   const toggleFavorite = (sourceId: string) => {
     setFavorites(prev => {
@@ -158,6 +222,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       hasNext,
       hasPrevious,
       playTrack,
+      shuffle,
+      toggleShuffle,
+      repeatMode,
+      cycleRepeatMode,
       favorites,
       toggleFavorite,
       isFavorite,
