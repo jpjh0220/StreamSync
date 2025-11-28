@@ -1,16 +1,30 @@
 import { usePlayer } from "@/contexts/PlayerContext";
 import { Card } from "./ui/card";
 import { Button } from "./ui/button";
-import { Heart, Play, Pause, Volume2, VolumeX, X } from "lucide-react";
+import { Heart, Play, Pause, Volume2, VolumeX, X, SkipBack, SkipForward, ListMusic } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { useAuth } from "@/_core/hooks/useAuth";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { Slider } from "./ui/slider";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "./ui/sheet";
+import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 
 export function GlobalPlayer() {
   const { user } = useAuth();
-  const { currentTrack, setCurrentTrack, isFavorite, toggleFavorite: toggleFavoriteLocal } = usePlayer();
+  const {
+    currentTrack,
+    setCurrentTrack,
+    isFavorite,
+    toggleFavorite: toggleFavoriteLocal,
+    playNext,
+    playPrevious,
+    hasNext,
+    hasPrevious,
+    queue,
+    removeFromQueue,
+    currentIndex,
+  } = usePlayer();
   const toggleFavoriteMutation = trpc.tracks.toggleFavorite.useMutation();
 
   const [isPlaying, setIsPlaying] = useState(true);
@@ -45,16 +59,16 @@ export function GlobalPlayer() {
     }
   };
 
-  const sendCommand = (command: string) => {
+  const sendCommand = useCallback((command: string) => {
     if (iframeRef.current?.contentWindow) {
       iframeRef.current.contentWindow.postMessage(
         JSON.stringify({ event: 'command', func: command, args: '' }),
         '*'
       );
     }
-  };
+  }, []);
 
-  const togglePlayPause = () => {
+  const togglePlayPause = useCallback(() => {
     if (isPlaying) {
       sendCommand('pauseVideo');
       setIsPlaying(false);
@@ -62,9 +76,9 @@ export function GlobalPlayer() {
       sendCommand('playVideo');
       setIsPlaying(true);
     }
-  };
+  }, [isPlaying, sendCommand]);
 
-  const toggleMute = () => {
+  const toggleMute = useCallback(() => {
     if (isMuted) {
       sendCommand('unMute');
       setIsMuted(false);
@@ -72,7 +86,41 @@ export function GlobalPlayer() {
       sendCommand('mute');
       setIsMuted(true);
     }
-  };
+  }, [isMuted, sendCommand]);
+
+  const volumeUp = useCallback(() => {
+    const newVolume = Math.min(100, volume + 10);
+    setVolume(newVolume);
+    if (iframeRef.current?.contentWindow) {
+      iframeRef.current.contentWindow.postMessage(
+        JSON.stringify({ event: 'command', func: 'setVolume', args: [newVolume] }),
+        '*'
+      );
+    }
+    if (isMuted && newVolume > 0) setIsMuted(false);
+  }, [volume, isMuted]);
+
+  const volumeDown = useCallback(() => {
+    const newVolume = Math.max(0, volume - 10);
+    setVolume(newVolume);
+    if (iframeRef.current?.contentWindow) {
+      iframeRef.current.contentWindow.postMessage(
+        JSON.stringify({ event: 'command', func: 'setVolume', args: [newVolume] }),
+        '*'
+      );
+    }
+    if (newVolume === 0) setIsMuted(true);
+  }, [volume]);
+
+  // Keyboard shortcuts
+  useKeyboardShortcuts({
+    onPlayPause: currentTrack ? togglePlayPause : undefined,
+    onNext: hasNext ? playNext : undefined,
+    onPrevious: hasPrevious ? playPrevious : undefined,
+    onVolumeUp: currentTrack ? volumeUp : undefined,
+    onVolumeDown: currentTrack ? volumeDown : undefined,
+    onToggleMute: currentTrack ? toggleMute : undefined,
+  });
 
   const handleVolumeChange = (value: number[]) => {
     const newVolume = value[0];
@@ -123,12 +171,17 @@ export function GlobalPlayer() {
       setIsPlaying(false);
     });
 
+    navigator.mediaSession.setActionHandler('nexttrack', hasNext ? playNext : null);
+    navigator.mediaSession.setActionHandler('previoustrack', hasPrevious ? playPrevious : null);
+
     return () => {
       navigator.mediaSession.metadata = null;
       navigator.mediaSession.setActionHandler('play', null);
       navigator.mediaSession.setActionHandler('pause', null);
+      navigator.mediaSession.setActionHandler('nexttrack', null);
+      navigator.mediaSession.setActionHandler('previoustrack', null);
     };
-  }, [currentTrack]);
+  }, [currentTrack, hasNext, hasPrevious, playNext, playPrevious]);
 
   useEffect(() => {
     setIsPlaying(true);
@@ -200,6 +253,18 @@ export function GlobalPlayer() {
 
             {/* Controls */}
             <div className="flex items-center gap-1 shrink-0">
+              {/* Previous track */}
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={playPrevious}
+                disabled={!hasPrevious}
+                className="h-8 w-8"
+              >
+                <SkipBack className={`w-4 h-4 ${hasPrevious ? 'text-white' : 'text-zinc-600'}`} />
+              </Button>
+
+              {/* Play/Pause */}
               <Button
                 size="icon"
                 variant="ghost"
@@ -213,6 +278,18 @@ export function GlobalPlayer() {
                 )}
               </Button>
 
+              {/* Next track */}
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={playNext}
+                disabled={!hasNext}
+                className="h-8 w-8"
+              >
+                <SkipForward className={`w-4 h-4 ${hasNext ? 'text-white' : 'text-zinc-600'}`} />
+              </Button>
+
+              {/* Favorite */}
               <Button
                 size="icon"
                 variant="ghost"
@@ -224,7 +301,76 @@ export function GlobalPlayer() {
                 />
               </Button>
 
-              <div className="hidden sm:flex items-center gap-2 ml-2">
+              {/* Queue */}
+              <Sheet>
+                <SheetTrigger asChild>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-8 w-8 relative"
+                  >
+                    <ListMusic className="w-4 h-4 text-white" />
+                    {queue.length > 0 && (
+                      <span className="absolute -top-1 -right-1 bg-purple-600 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">
+                        {queue.length}
+                      </span>
+                    )}
+                  </Button>
+                </SheetTrigger>
+                <SheetContent side="right" className="w-full sm:w-96 bg-zinc-900 border-zinc-800">
+                  <SheetHeader>
+                    <SheetTitle className="text-white">Queue ({queue.length})</SheetTitle>
+                    <SheetDescription className="text-zinc-400">
+                      Up next tracks
+                    </SheetDescription>
+                  </SheetHeader>
+                  <div className="mt-4 space-y-2 max-h-[calc(100vh-200px)] overflow-y-auto">
+                    {queue.length === 0 ? (
+                      <p className="text-center text-zinc-500 py-8">No tracks in queue</p>
+                    ) : (
+                      queue.map((track, index) => (
+                        <div
+                          key={`${track.id}-${index}`}
+                          className={`flex items-center gap-3 p-2 rounded ${
+                            index === currentIndex ? 'bg-purple-900/50' : 'hover:bg-zinc-800'
+                          }`}
+                        >
+                          <img
+                            src={track.thumbnail}
+                            alt={track.title}
+                            className="w-10 h-10 rounded object-cover"
+                            onError={(e) => {
+                              e.currentTarget.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="40" height="40"%3E%3Crect fill="%23333" width="40" height="40"/%3E%3C/svg%3E';
+                            }}
+                          />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium truncate text-white">{track.title}</p>
+                            <p className="text-xs text-zinc-400 truncate">{track.artist}</p>
+                          </div>
+                          {index === currentIndex && (
+                            <span className="text-xs bg-purple-600 px-2 py-0.5 rounded text-white">
+                              Playing
+                            </span>
+                          )}
+                          {index !== currentIndex && (
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-6 w-6 shrink-0"
+                              onClick={() => removeFromQueue(index)}
+                            >
+                              <X className="w-3 h-3 text-zinc-400" />
+                            </Button>
+                          )}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </SheetContent>
+              </Sheet>
+
+              {/* Volume (desktop only) */}
+              <div className="hidden md:flex items-center gap-2 ml-2">
                 <Button
                   size="icon"
                   variant="ghost"
@@ -246,6 +392,7 @@ export function GlobalPlayer() {
                 />
               </div>
 
+              {/* Close */}
               <Button
                 size="icon"
                 variant="ghost"
