@@ -1,7 +1,7 @@
 import { usePlayer } from "@/contexts/PlayerContext";
 import { Card } from "./ui/card";
 import { Button } from "./ui/button";
-import { Heart, Play, Pause, Volume2, VolumeX, X, SkipBack, SkipForward, ListMusic, Shuffle, Repeat, Repeat1, Save } from "lucide-react";
+import { Heart, Play, Pause, Volume2, VolumeX, X, SkipBack, SkipForward, ListMusic, Shuffle, Repeat, Repeat1, Save, Timer, Gauge } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { useAuth } from "@/_core/hooks/useAuth";
@@ -32,6 +32,10 @@ export function GlobalPlayer() {
     repeatMode,
     cycleRepeatMode,
     addToHistory,
+    sleepTimer,
+    setSleepTimer,
+    playbackSpeed,
+    setPlaybackSpeed,
   } = usePlayer();
   const toggleFavoriteMutation = trpc.tracks.toggleFavorite.useMutation();
 
@@ -223,6 +227,15 @@ export function GlobalPlayer() {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
+  const formatSleepTimer = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    if (mins > 0) {
+      return `${mins}m ${secs}s`;
+    }
+    return `${secs}s`;
+  };
+
   useEffect(() => {
     if (!currentTrack || !('mediaSession' in navigator)) return;
 
@@ -265,6 +278,16 @@ export function GlobalPlayer() {
       addToHistory(currentTrack);
     }
   }, [currentTrack?.id, currentTrack, addToHistory]);
+
+  // Set playback speed when it changes
+  useEffect(() => {
+    if (iframeRef.current?.contentWindow) {
+      iframeRef.current.contentWindow.postMessage(
+        JSON.stringify({ event: 'command', func: 'setPlaybackRate', args: [playbackSpeed] }),
+        '*'
+      );
+    }
+  }, [playbackSpeed, currentTrack?.id]);
 
   // Auto-play next track when video ends
   useEffect(() => {
@@ -415,6 +438,106 @@ export function GlobalPlayer() {
                   <Repeat className={`w-4 h-4 ${repeatMode === 'all' ? 'text-purple-400' : 'text-zinc-400'}`} />
                 )}
               </Button>
+
+              {/* Sleep Timer */}
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-8 w-8 relative"
+                    title="Sleep timer"
+                  >
+                    <Timer className={`w-4 h-4 ${sleepTimer ? 'text-purple-400' : 'text-zinc-400'}`} />
+                    {sleepTimer && sleepTimer > 0 && (
+                      <span className="absolute -top-1 -right-1 bg-purple-600 text-white text-[10px] rounded-full w-4 h-4 flex items-center justify-center">
+                        {Math.ceil(sleepTimer / 60)}
+                      </span>
+                    )}
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="bg-zinc-900 border-zinc-800 text-white">
+                  <DialogHeader>
+                    <DialogTitle>Sleep Timer</DialogTitle>
+                    <DialogDescription className="text-zinc-400">
+                      {sleepTimer ? `Timer active: ${formatSleepTimer(sleepTimer)} remaining` : 'Set a timer to auto-stop playback'}
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="grid grid-cols-2 gap-3 mt-4">
+                    <Button
+                      onClick={() => setSleepTimer(15)}
+                      variant="outline"
+                      className="border-zinc-700 hover:bg-zinc-800"
+                    >
+                      15 min
+                    </Button>
+                    <Button
+                      onClick={() => setSleepTimer(30)}
+                      variant="outline"
+                      className="border-zinc-700 hover:bg-zinc-800"
+                    >
+                      30 min
+                    </Button>
+                    <Button
+                      onClick={() => setSleepTimer(45)}
+                      variant="outline"
+                      className="border-zinc-700 hover:bg-zinc-800"
+                    >
+                      45 min
+                    </Button>
+                    <Button
+                      onClick={() => setSleepTimer(60)}
+                      variant="outline"
+                      className="border-zinc-700 hover:bg-zinc-800"
+                    >
+                      1 hour
+                    </Button>
+                  </div>
+                  {sleepTimer && (
+                    <Button
+                      onClick={() => setSleepTimer(null)}
+                      variant="destructive"
+                      className="mt-2 w-full"
+                    >
+                      Cancel Timer
+                    </Button>
+                  )}
+                </DialogContent>
+              </Dialog>
+
+              {/* Playback Speed */}
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-8 w-8"
+                    title="Playback speed"
+                  >
+                    <Gauge className={`w-4 h-4 ${playbackSpeed !== 1 ? 'text-purple-400' : 'text-zinc-400'}`} />
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="bg-zinc-900 border-zinc-800 text-white">
+                  <DialogHeader>
+                    <DialogTitle>Playback Speed</DialogTitle>
+                    <DialogDescription className="text-zinc-400">
+                      Current speed: {playbackSpeed}x
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="grid grid-cols-3 gap-2 mt-4">
+                    {[0.5, 0.75, 1, 1.25, 1.5, 2].map((speed) => (
+                      <Button
+                        key={speed}
+                        onClick={() => setPlaybackSpeed(speed)}
+                        variant={playbackSpeed === speed ? "default" : "outline"}
+                        className={playbackSpeed === speed ? "bg-purple-600 hover:bg-purple-700" : "border-zinc-700 hover:bg-zinc-800"}
+                      >
+                        {speed}x
+                      </Button>
+                    ))}
+                  </div>
+                </DialogContent>
+              </Dialog>
 
               {/* Favorite */}
               <Button
