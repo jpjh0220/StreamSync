@@ -506,11 +506,12 @@ export function GlobalPlayer() {
           </div>
         </Card>
         {/* Hidden iframe for playback */}
-        <div className="w-0 h-0 overflow-hidden">
+        <div className="fixed -left-[9999px] w-[640px] h-[360px]">
           <iframe
             ref={iframeRef}
             key={currentTrack.id}
             src={`https://www.youtube.com/embed/${currentTrack.id}?autoplay=1&rel=0&modestbranding=1&enablejsapi=1`}
+            className="w-full h-full"
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
             allowFullScreen
           />
@@ -523,7 +524,7 @@ export function GlobalPlayer() {
     <div className="fixed bottom-20 left-0 right-0 z-40 px-4 pb-4">
       <Card className="bg-zinc-900/95 backdrop-blur border-zinc-800 overflow-hidden">
         {/* Video Player - Hidden but playing */}
-        <div className="w-0 h-0 overflow-hidden" ref={videoContainerRef}>
+        <div className="fixed -left-[9999px] w-[640px] h-[360px]" ref={videoContainerRef}>
           <iframe
             ref={iframeRef}
             key={currentTrack.id}
