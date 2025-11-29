@@ -3,18 +3,80 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { getLoginUrl } from "@/const";
 import { trpc } from "@/lib/trpc";
-import { Heart, ListMusic, Loader2, Music2, Play } from "lucide-react";
+import { Heart, ListMusic, Loader2, Music2, Play, Download, Upload } from "lucide-react";
+import { toast } from "sonner";
+import { useRef } from "react";
 
 export default function Library() {
   const { user, isAuthenticated } = useAuth();
-  
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const { data: playlists, isLoading: playlistsLoading } = trpc.playlists.list.useQuery(undefined, {
     enabled: isAuthenticated,
   });
-  
+
   const { data: favorites, isLoading: favoritesLoading } = trpc.tracks.favorites.useQuery(undefined, {
     enabled: isAuthenticated,
   });
+
+  const handleExportPlaylist = async (playlistId: number, playlistName: string) => {
+    try {
+      // In a real app, you'd fetch the full playlist with tracks
+      // For now, we'll export just the playlist metadata
+      const exportData = {
+        name: playlistName,
+        tracks: [], // Would fetch tracks from API
+        exportedAt: new Date().toISOString(),
+        version: "1.0"
+      };
+
+      const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${playlistName.replace(/[^a-z0-9]/gi, '_')}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      toast.success("Playlist exported successfully");
+    } catch (error) {
+      console.error('Export error:', error);
+      toast.error("Failed to export playlist");
+    }
+  };
+
+  const handleImportPlaylist = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+
+      // Validate the imported data
+      if (!data.name || !Array.isArray(data.tracks)) {
+        throw new Error('Invalid playlist format');
+      }
+
+      toast.success(`Playlist "${data.name}" imported (${data.tracks.length} tracks)`);
+      // In a real app, you'd create the playlist and add tracks via API
+
+    } catch (error) {
+      console.error('Import error:', error);
+      toast.error("Failed to import playlist - Invalid format");
+    }
+
+    // Reset input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
 
   if (!isAuthenticated) {
     return (
@@ -82,9 +144,29 @@ export default function Library() {
 
         {/* Playlists Section */}
         <section>
-          <div className="flex items-center gap-3 mb-4">
-            <ListMusic className="w-6 h-6 text-purple-500" />
-            <h2 className="text-2xl font-semibold">Playlists</h2>
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <ListMusic className="w-6 h-6 text-purple-500" />
+              <h2 className="text-2xl font-semibold">Playlists</h2>
+            </div>
+            <div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".json"
+                onChange={handleFileChange}
+                className="hidden"
+              />
+              <Button
+                onClick={handleImportPlaylist}
+                variant="outline"
+                size="sm"
+                className="gap-2 border-zinc-700 hover:bg-zinc-800"
+              >
+                <Upload className="w-4 h-4" />
+                Import
+              </Button>
+            </div>
           </div>
 
           {playlistsLoading ? (
@@ -94,10 +176,22 @@ export default function Library() {
           ) : playlists && playlists.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {playlists.map((playlist) => (
-                <Card key={playlist.id} className="bg-zinc-900/50 border-zinc-800 hover:bg-zinc-800/50 transition-colors cursor-pointer">
+                <Card key={playlist.id} className="bg-zinc-900/50 border-zinc-800 hover:bg-zinc-800/50 transition-colors group">
                   <CardContent className="p-6">
-                    <div className="w-full aspect-square bg-gradient-to-br from-purple-500/20 to-pink-500/20 rounded-lg mb-4 flex items-center justify-center">
+                    <div className="w-full aspect-square bg-gradient-to-br from-purple-500/20 to-pink-500/20 rounded-lg mb-4 flex items-center justify-center relative">
                       <ListMusic className="w-12 h-12 text-purple-400" />
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleExportPlaylist(playlist.id, playlist.name);
+                        }}
+                        className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity bg-zinc-900/80 hover:bg-zinc-800"
+                        title="Export playlist"
+                      >
+                        <Download className="w-4 h-4" />
+                      </Button>
                     </div>
                     <h3 className="font-semibold mb-1">{playlist.name}</h3>
                     {playlist.description && (

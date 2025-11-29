@@ -1,7 +1,7 @@
 import { usePlayer } from "@/contexts/PlayerContext";
 import { Card } from "./ui/card";
 import { Button } from "./ui/button";
-import { Heart, Play, Pause, Volume2, VolumeX, X, SkipBack, SkipForward, ListMusic, Shuffle, Repeat, Repeat1, Save, Timer, Gauge } from "lucide-react";
+import { Heart, Play, Pause, Volume2, VolumeX, X, SkipBack, SkipForward, ListMusic, Shuffle, Repeat, Repeat1, Save, Timer, Gauge, Trash2 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { useAuth } from "@/_core/hooks/useAuth";
@@ -26,6 +26,7 @@ export function GlobalPlayer() {
     hasPrevious,
     queue,
     removeFromQueue,
+    clearQueue,
     currentIndex,
     shuffle,
     toggleShuffle,
@@ -577,13 +578,28 @@ export function GlobalPlayer() {
                         </SheetDescription>
                       </div>
                       {queue.length > 0 && (
-                        <Dialog>
-                          <DialogTrigger asChild>
-                            <Button size="sm" variant="outline" className="gap-2">
-                              <Save className="w-4 h-4" />
-                              Save
-                            </Button>
-                          </DialogTrigger>
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              if (confirm(`Clear all ${queue.length} tracks from queue?`)) {
+                                clearQueue();
+                                toast.success("Queue cleared");
+                              }
+                            }}
+                            className="gap-2 border-zinc-700 hover:bg-red-900/20"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                            Clear
+                          </Button>
+                          <Dialog>
+                            <DialogTrigger asChild>
+                              <Button size="sm" variant="outline" className="gap-2 border-zinc-700">
+                                <Save className="w-4 h-4" />
+                                Save
+                              </Button>
+                            </DialogTrigger>
                           <DialogContent className="bg-zinc-900 border-zinc-800 text-white">
                             <DialogHeader>
                               <DialogTitle>Save Queue as Playlist</DialogTitle>
@@ -624,6 +640,7 @@ export function GlobalPlayer() {
                             </DialogFooter>
                           </DialogContent>
                         </Dialog>
+                        </div>
                       )}
                     </div>
                   </SheetHeader>
