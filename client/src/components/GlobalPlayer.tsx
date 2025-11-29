@@ -407,7 +407,7 @@ export function GlobalPlayer() {
       navigator.mediaSession.setActionHandler('nexttrack', null);
       navigator.mediaSession.setActionHandler('previoustrack', null);
     };
-  }, [currentTrack, hasNext, hasPrevious, playNext, playPrevious, sendCommand]);
+  }, [currentTrack, hasNext, hasPrevious, playNext, playPrevious]);
 
   // Update Media Session playback state
   useEffect(() => {
@@ -424,18 +424,6 @@ export function GlobalPlayer() {
     if (currentTrack) {
       addToHistory(currentTrack);
     }
-
-    // Wait a bit for iframe to load, then send play command to ensure playback
-    const playTimer = setTimeout(() => {
-      if (iframeRef.current?.contentWindow) {
-        iframeRef.current.contentWindow.postMessage(
-          JSON.stringify({ event: 'command', func: 'playVideo', args: '' }),
-          '*'
-        );
-      }
-    }, 1000);
-
-    return () => clearTimeout(playTimer);
   }, [currentTrack?.id, currentTrack, addToHistory]);
 
   // Set playback speed when it changes
