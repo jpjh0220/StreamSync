@@ -3,11 +3,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { trpc } from "@/lib/trpc";
-import { useState, useCallback } from "react";
-import { Search, Play, Heart, Plus, Clock, X } from "lucide-react";
+import { useState, useCallback, useMemo } from "react";
+import { Search, Play, Heart, Plus, Clock, X, Filter } from "lucide-react";
 import { toast } from "sonner";
 import { usePlayer } from "@/contexts/PlayerContext";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface Track {
   id: string;
@@ -32,11 +33,46 @@ export default function Home() {
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<Track[]>([]);
+  const [sourceFilter, setSourceFilter] = useState<"all" | "youtube" | "soundcloud">("all");
+  const [durationFilter, setDurationFilter] = useState<"any" | "short" | "medium" | "long">("any");
+  const [sortBy, setSortBy] = useState<"relevance" | "duration_asc" | "duration_desc" | "title">("relevance");
 
   const searchYouTubeMutation = trpc.music.searchYouTube.useMutation();
   const searchSoundCloudMutation = trpc.music.searchSoundCloud.useMutation();
   const saveTrackMutation = trpc.tracks.save.useMutation();
   const toggleFavoriteMutation = trpc.tracks.toggleFavorite.useMutation();
+
+  // Filter and sort results
+  const filteredResults = useMemo(() => {
+    let filtered = [...searchResults];
+
+    // Source filter
+    if (sourceFilter !== "all") {
+      filtered = filtered.filter(track => track.source === sourceFilter);
+    }
+
+    // Duration filter
+    if (durationFilter !== "any") {
+      filtered = filtered.filter(track => {
+        if (durationFilter === "short") return track.duration < 300; // < 5 min
+        if (durationFilter === "medium") return track.duration >= 300 && track.duration <= 600; // 5-10 min
+        if (durationFilter === "long") return track.duration > 600; // > 10 min
+        return true;
+      });
+    }
+
+    // Sort
+    if (sortBy === "duration_asc") {
+      filtered.sort((a, b) => a.duration - b.duration);
+    } else if (sortBy === "duration_desc") {
+      filtered.sort((a, b) => b.duration - a.duration);
+    } else if (sortBy === "title") {
+      filtered.sort((a, b) => a.title.localeCompare(b.title));
+    }
+    // relevance = keep original order
+
+    return filtered;
+  }, [searchResults, sourceFilter, durationFilter, sortBy]);
 
   const handleSearch = useCallback(async () => {
     if (!searchQuery.trim()) {
@@ -169,6 +205,52 @@ export default function Home() {
             </Button>
           </div>
 
+          {/* Filters */}
+          {searchResults.length > 0 && (
+            <div className="mb-4">
+              <div className="flex items-center gap-2 mb-2">
+                <Filter className="w-4 h-4 text-zinc-400" />
+                <span className="text-sm text-zinc-400">Filters</span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                <Select value={sourceFilter} onValueChange={(value: any) => setSourceFilter(value)}>
+                  <SelectTrigger className="bg-zinc-800 border-zinc-700 text-white">
+                    <SelectValue placeholder="Source" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-zinc-800 border-zinc-700 text-white">
+                    <SelectItem value="all">All Sources</SelectItem>
+                    <SelectItem value="youtube">YouTube Only</SelectItem>
+                    <SelectItem value="soundcloud">SoundCloud Only</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                <Select value={durationFilter} onValueChange={(value: any) => setDurationFilter(value)}>
+                  <SelectTrigger className="bg-zinc-800 border-zinc-700 text-white">
+                    <SelectValue placeholder="Duration" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-zinc-800 border-zinc-700 text-white">
+                    <SelectItem value="any">Any Duration</SelectItem>
+                    <SelectItem value="short">Short (&lt; 5 min)</SelectItem>
+                    <SelectItem value="medium">Medium (5-10 min)</SelectItem>
+                    <SelectItem value="long">Long (&gt; 10 min)</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                <Select value={sortBy} onValueChange={(value: any) => setSortBy(value)}>
+                  <SelectTrigger className="bg-zinc-800 border-zinc-700 text-white">
+                    <SelectValue placeholder="Sort by" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-zinc-800 border-zinc-700 text-white">
+                    <SelectItem value="relevance">Relevance</SelectItem>
+                    <SelectItem value="duration_asc">Duration: Low to High</SelectItem>
+                    <SelectItem value="duration_desc">Duration: High to Low</SelectItem>
+                    <SelectItem value="title">Title: A-Z</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          )}
+
           {/* Recent Searches */}
           {recentSearches.length > 0 && (
             <div>
@@ -230,8 +312,12 @@ export default function Home() {
         )}
 
         {!isSearching && searchResults.length > 0 && (
-          <div className="space-y-3">
-            {searchResults.map((track) => (
+          <>
+            <div className="mb-3 text-sm text-zinc-400">
+              Showing {filteredResults.length} of {searchResults.length} results
+            </div>
+            <div className="space-y-3">
+              {filteredResults.map((track) => (
               <Card
                 key={`${track.source}-${track.id}`}
                 className="bg-zinc-900/50 border-zinc-800 p-4 hover:bg-zinc-800/50 cursor-pointer"
@@ -284,8 +370,9 @@ export default function Home() {
                   </Button>
                 </div>
               </Card>
-            ))}
-          </div>
+              ))}
+            </div>
+          </>
         )}
       </div>
     </div>

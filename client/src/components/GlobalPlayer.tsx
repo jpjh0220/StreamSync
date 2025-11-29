@@ -31,6 +31,7 @@ export function GlobalPlayer() {
     toggleShuffle,
     repeatMode,
     cycleRepeatMode,
+    addToHistory,
   } = usePlayer();
   const toggleFavoriteMutation = trpc.tracks.toggleFavorite.useMutation();
 
@@ -258,7 +259,12 @@ export function GlobalPlayer() {
   useEffect(() => {
     setIsPlaying(true);
     setError(false);
-  }, [currentTrack?.id]);
+
+    // Add to play history when track changes
+    if (currentTrack) {
+      addToHistory(currentTrack);
+    }
+  }, [currentTrack?.id, currentTrack, addToHistory]);
 
   // Auto-play next track when video ends
   useEffect(() => {

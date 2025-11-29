@@ -34,6 +34,9 @@ interface PlayerContextType {
   recentSearches: string[];
   addRecentSearch: (query: string) => void;
   clearRecentSearches: () => void;
+  playHistory: Track[];
+  addToHistory: (track: Track) => void;
+  clearHistory: () => void;
 }
 
 const PlayerContext = createContext<PlayerContextType | undefined>(undefined);
@@ -45,10 +48,31 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [currentIndex, setCurrentIndex] = useState<number>(-1);
   const [shuffle, setShuffle] = useState<boolean>(false);
   const [repeatMode, setRepeatMode] = useState<RepeatMode>('off');
-  const [favorites, setFavorites] = useState<Set<string>>(new Set());
+
+  // Persistent favorites with localStorage
+  const [favorites, setFavorites] = useState<Set<string>>(() => {
+    try {
+      const saved = localStorage.getItem('favorites');
+      return saved ? new Set(JSON.parse(saved)) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
+
+  // Recent searches with localStorage
   const [recentSearches, setRecentSearches] = useState<string[]>(() => {
     try {
       const saved = localStorage.getItem('recentSearches');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  // Play history with localStorage (last 50 tracks)
+  const [playHistory, setPlayHistory] = useState<Track[]>(() => {
+    try {
+      const saved = localStorage.getItem('playHistory');
       return saved ? JSON.parse(saved) : [];
     } catch {
       return [];
@@ -176,7 +200,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const toggleFavorite = (sourceId: string) => {
+  const toggleFavorite = useCallback((sourceId: string) => {
     setFavorites(prev => {
       const newSet = new Set(prev);
       if (newSet.has(sourceId)) {
@@ -184,9 +208,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       } else {
         newSet.add(sourceId);
       }
+      // Persist to localStorage
+      localStorage.setItem('favorites', JSON.stringify(Array.from(newSet)));
       return newSet;
     });
-  };
+  }, []);
 
   const isFavorite = (sourceId: string) => {
     return favorites.has(sourceId);
@@ -206,6 +232,21 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const clearRecentSearches = useCallback(() => {
     setRecentSearches([]);
     localStorage.removeItem('recentSearches');
+  }, []);
+
+  const addToHistory = useCallback((track: Track) => {
+    setPlayHistory(prev => {
+      // Remove duplicates and add to front
+      const filtered = prev.filter(t => t.id !== track.id);
+      const newHistory = [track, ...filtered].slice(0, 50); // Keep last 50
+      localStorage.setItem('playHistory', JSON.stringify(newHistory));
+      return newHistory;
+    });
+  }, []);
+
+  const clearHistory = useCallback(() => {
+    setPlayHistory([]);
+    localStorage.removeItem('playHistory');
   }, []);
 
   return (
@@ -232,6 +273,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       recentSearches,
       addRecentSearch,
       clearRecentSearches,
+      playHistory,
+      addToHistory,
+      clearHistory,
     }}>
       {children}
     </PlayerContext.Provider>

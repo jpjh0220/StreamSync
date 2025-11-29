@@ -9,12 +9,23 @@ import { GlobalPlayer } from "./components/GlobalPlayer";
 import { OfflineIndicator } from "./components/OfflineIndicator";
 import Home from "./pages/Home";
 import Library from "./pages/Library";
+import History from "./pages/History";
 import { Button } from "./components/ui/button";
-import { Home as HomeIcon, Library as LibraryIcon, Keyboard } from "lucide-react";
+import { Home as HomeIcon, Library as LibraryIcon, Clock, Keyboard, Palette } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "./components/ui/dialog";
+import { useTheme } from "./contexts/ThemeContext";
 
 function Router() {
   const [location, setLocation] = useLocation();
+  const { colorTheme, setColorTheme } = useTheme();
+
+  const themeOptions: Array<{ name: string; value: "purple" | "blue" | "green" | "orange" | "pink"; color: string }> = [
+    { name: "Purple", value: "purple", color: "bg-purple-600" },
+    { name: "Blue", value: "blue", color: "bg-blue-600" },
+    { name: "Green", value: "green", color: "bg-green-600" },
+    { name: "Orange", value: "orange", color: "bg-orange-600" },
+    { name: "Pink", value: "pink", color: "bg-pink-600" },
+  ];
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-zinc-900 via-zinc-900 to-black text-white">
@@ -26,6 +37,7 @@ function Router() {
         <Switch>
           <Route path={"/"} component={Home} />
           <Route path={"/library"} component={Library} />
+          <Route path={"/history"} component={History} />
           <Route path={"/404"} component={NotFound} />
           <Route component={NotFound} />
         </Switch>
@@ -58,16 +70,63 @@ function Router() {
               <LibraryIcon className="w-6 h-6" />
               <span className="text-xs">Library</span>
             </Button>
+            <Button
+              variant="ghost"
+              className={`flex flex-col items-center gap-1 h-auto py-2 px-6 ${
+                location === '/history' ? 'text-purple-400' : 'text-zinc-400'
+              }`}
+              onClick={() => setLocation('/history')}
+            >
+              <Clock className="w-6 h-6" />
+              <span className="text-xs">History</span>
+            </Button>
+
+            {/* Theme Picker */}
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button
+                  variant="ghost"
+                  className="flex flex-col items-center gap-1 h-auto py-2 px-4 text-zinc-400"
+                >
+                  <Palette className="w-6 h-6" />
+                  <span className="text-xs">Theme</span>
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="bg-zinc-900 border-zinc-800 text-white">
+                <DialogHeader>
+                  <DialogTitle>Choose Theme</DialogTitle>
+                  <DialogDescription className="text-zinc-400">
+                    Select your preferred color theme
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="grid grid-cols-2 gap-3 mt-4">
+                  {themeOptions.map((option) => (
+                    <button
+                      key={option.value}
+                      onClick={() => setColorTheme(option.value)}
+                      className={`flex items-center gap-3 p-4 rounded-lg border-2 transition-all ${
+                        colorTheme === option.value
+                          ? 'border-white bg-zinc-800'
+                          : 'border-zinc-700 bg-zinc-800/50 hover:bg-zinc-800'
+                      }`}
+                    >
+                      <div className={`w-8 h-8 rounded-full ${option.color}`} />
+                      <span className="font-medium">{option.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </DialogContent>
+            </Dialog>
 
             {/* Keyboard Shortcuts Help */}
             <Dialog>
               <DialogTrigger asChild>
                 <Button
                   variant="ghost"
-                  className="flex flex-col items-center gap-1 h-auto py-2 px-6 text-zinc-400"
+                  className="flex flex-col items-center gap-1 h-auto py-2 px-4 text-zinc-400"
                 >
                   <Keyboard className="w-6 h-6" />
-                  <span className="text-xs">Shortcuts</span>
+                  <span className="text-xs">Keys</span>
                 </Button>
               </DialogTrigger>
               <DialogContent className="bg-zinc-900 border-zinc-800 text-white">
