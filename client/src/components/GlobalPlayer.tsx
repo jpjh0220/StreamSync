@@ -375,6 +375,7 @@ export function GlobalPlayer() {
     }
   };
 
+  // Update Media Session API
   useEffect(() => {
     if (!currentTrack || !('mediaSession' in navigator)) return;
 
@@ -406,7 +407,14 @@ export function GlobalPlayer() {
       navigator.mediaSession.setActionHandler('nexttrack', null);
       navigator.mediaSession.setActionHandler('previoustrack', null);
     };
-  }, [currentTrack, hasNext, hasPrevious, playNext, playPrevious]);
+  }, [currentTrack, hasNext, hasPrevious, playNext, playPrevious, sendCommand]);
+
+  // Update Media Session playback state
+  useEffect(() => {
+    if ('mediaSession' in navigator) {
+      navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
+    }
+  }, [isPlaying]);
 
   useEffect(() => {
     setIsPlaying(true);
@@ -416,6 +424,18 @@ export function GlobalPlayer() {
     if (currentTrack) {
       addToHistory(currentTrack);
     }
+
+    // Wait a bit for iframe to load, then send play command to ensure playback
+    const playTimer = setTimeout(() => {
+      if (iframeRef.current?.contentWindow) {
+        iframeRef.current.contentWindow.postMessage(
+          JSON.stringify({ event: 'command', func: 'playVideo', args: '' }),
+          '*'
+        );
+      }
+    }, 1000);
+
+    return () => clearTimeout(playTimer);
   }, [currentTrack?.id, currentTrack, addToHistory]);
 
   // Set playback speed when it changes
@@ -510,9 +530,9 @@ export function GlobalPlayer() {
           <iframe
             ref={iframeRef}
             key={currentTrack.id}
-            src={`https://www.youtube.com/embed/${currentTrack.id}?autoplay=1&rel=0&modestbranding=1&enablejsapi=1`}
+            src={`https://www.youtube.com/embed/${currentTrack.id}?autoplay=1&mute=0&controls=0&rel=0&modestbranding=1&enablejsapi=1&origin=${window.location.origin}&playsinline=1`}
             className="w-full h-full"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
             allowFullScreen
           />
         </div>
@@ -528,9 +548,9 @@ export function GlobalPlayer() {
           <iframe
             ref={iframeRef}
             key={currentTrack.id}
-            src={`https://www.youtube.com/embed/${currentTrack.id}?autoplay=1&rel=0&modestbranding=1&enablejsapi=1`}
+            src={`https://www.youtube.com/embed/${currentTrack.id}?autoplay=1&mute=0&controls=0&rel=0&modestbranding=1&enablejsapi=1&origin=${window.location.origin}&playsinline=1`}
             className="w-full h-full"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
             allowFullScreen
             title={currentTrack.title}
             onError={() => setError(true)}
