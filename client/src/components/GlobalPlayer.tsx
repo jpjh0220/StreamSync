@@ -1,7 +1,7 @@
 import { usePlayer } from "@/contexts/PlayerContext";
 import { Card } from "./ui/card";
 import { Button } from "./ui/button";
-import { Heart, Play, Pause, Volume2, VolumeX, X, SkipBack, SkipForward, ListMusic, Shuffle, Repeat, Repeat1, Save, Timer, Gauge, Trash2 } from "lucide-react";
+import { Heart, Play, Pause, Volume2, VolumeX, X, SkipBack, SkipForward, ListMusic, Shuffle, Repeat, Repeat1, Save, Timer, Gauge, Trash2, Minimize2, Maximize2, PictureInPicture, GripVertical } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { useAuth } from "@/_core/hooks/useAuth";
@@ -12,6 +12,92 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
+import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
+import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import { Equalizer } from './Equalizer';
+import { LyricsPanel } from './LyricsPanel';
+import { UrlImport } from './UrlImport';
+import { AudioVisualizer } from './AudioVisualizer';
+import { FocusTimer } from './FocusTimer';
+
+interface Track {
+  id: string;
+  title: string;
+  artist: string;
+  duration: number;
+  thumbnail: string;
+  source: "youtube" | "soundcloud";
+}
+
+interface SortableQueueItemProps {
+  track: Track;
+  index: number;
+  currentIndex: number;
+  onRemove: () => void;
+}
+
+function SortableQueueItem({ track, index, currentIndex, onRemove }: SortableQueueItemProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: `${track.id}-${index}` });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`flex items-center gap-3 p-2 rounded ${
+        index === currentIndex ? 'bg-purple-900/50' : 'hover:bg-zinc-800'
+      }`}
+    >
+      <div
+        {...attributes}
+        {...listeners}
+        className="cursor-grab active:cursor-grabbing touch-none"
+      >
+        <GripVertical className="w-4 h-4 text-zinc-500" />
+      </div>
+      <img
+        src={track.thumbnail}
+        alt={track.title}
+        className="w-10 h-10 rounded object-cover"
+        onError={(e) => {
+          e.currentTarget.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="40" height="40"%3E%3Crect fill="%23333" width="40" height="40"/%3E%3C/svg%3E';
+        }}
+      />
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium truncate text-white">{track.title}</p>
+        <p className="text-xs text-zinc-400 truncate">{track.artist}</p>
+      </div>
+      {index === currentIndex && (
+        <span className="text-xs bg-purple-600 px-2 py-0.5 rounded text-white">
+          Playing
+        </span>
+      )}
+      {index !== currentIndex && (
+        <Button
+          size="icon"
+          variant="ghost"
+          className="h-6 w-6 shrink-0"
+          onClick={onRemove}
+        >
+          <X className="w-3 h-3 text-zinc-400" />
+        </Button>
+      )}
+    </div>
+  );
+}
 
 export function GlobalPlayer() {
   const { user } = useAuth();
@@ -26,6 +112,7 @@ export function GlobalPlayer() {
     hasPrevious,
     queue,
     removeFromQueue,
+    reorderQueue,
     clearQueue,
     currentIndex,
     shuffle,
@@ -40,6 +127,27 @@ export function GlobalPlayer() {
   } = usePlayer();
   const toggleFavoriteMutation = trpc.tracks.toggleFavorite.useMutation();
 
+  // Drag and drop sensors
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (over && active.id !== over.id) {
+      const oldIndex = queue.findIndex((_, i) => `${queue[i].id}-${i}` === active.id);
+      const newIndex = queue.findIndex((_, i) => `${queue[i].id}-${i}` === over.id);
+
+      if (oldIndex !== -1 && newIndex !== -1) {
+        reorderQueue(oldIndex, newIndex);
+      }
+    }
+  };
+
   const [isPlaying, setIsPlaying] = useState(true);
   const [isMuted, setIsMuted] = useState(false);
   const [volume, setVolume] = useState(100);
@@ -47,7 +155,10 @@ export function GlobalPlayer() {
   const [playlistName, setPlaylistName] = useState("");
   const [playlistDescription, setPlaylistDescription] = useState("");
   const [isSavingPlaylist, setIsSavingPlaylist] = useState(false);
+  const [isMiniMode, setIsMiniMode] = useState(false);
+  const [isPiPActive, setIsPiPActive] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const videoContainerRef = useRef<HTMLDivElement>(null);
 
   const createPlaylistMutation = trpc.playlists.create.useMutation();
   const addTrackToPlaylistMutation = trpc.playlists.addTrack.useMutation();
@@ -237,6 +348,33 @@ export function GlobalPlayer() {
     return `${secs}s`;
   };
 
+  const handlePictureInPicture = async () => {
+    try {
+      if (!document.pictureInPictureEnabled) {
+        toast.error("Picture-in-Picture not supported");
+        return;
+      }
+
+      const iframe = iframeRef.current;
+      if (!iframe) return;
+
+      // For YouTube iframe, we need to use the iframe's document
+      // This is a simplified version - real implementation would need more work
+      toast.info("Picture-in-Picture: Click the PiP button in the video player");
+
+      // Send PiP command to YouTube iframe
+      if (iframe.contentWindow) {
+        iframe.contentWindow.postMessage(
+          JSON.stringify({ event: 'command', func: 'requestPictureInPicture', args: '' }),
+          '*'
+        );
+      }
+    } catch (error) {
+      console.error('PiP error:', error);
+      toast.error("Could not activate Picture-in-Picture");
+    }
+  };
+
   useEffect(() => {
     if (!currentTrack || !('mediaSession' in navigator)) return;
 
@@ -337,11 +475,55 @@ export function GlobalPlayer() {
     );
   }
 
+  // Mini mode player
+  if (isMiniMode) {
+    return (
+      <div className="fixed bottom-20 right-4 z-40">
+        <Card className="bg-zinc-900/95 backdrop-blur border-zinc-800 w-64">
+          <div className="p-2 flex items-center gap-2">
+            <img
+              src={currentTrack.thumbnail}
+              alt={currentTrack.title}
+              className="w-10 h-10 rounded object-cover cursor-pointer"
+              onClick={() => setIsMiniMode(false)}
+            />
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-semibold truncate text-white">{currentTrack.title}</p>
+              <p className="text-xs text-zinc-400 truncate">{currentTrack.artist}</p>
+            </div>
+            <Button size="icon" variant="ghost" onClick={playPrevious} disabled={!hasPrevious} className="h-6 w-6">
+              <SkipBack className="w-3 h-3" />
+            </Button>
+            <Button size="icon" variant="ghost" onClick={togglePlayPause} className="h-6 w-6">
+              {isPlaying ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
+            </Button>
+            <Button size="icon" variant="ghost" onClick={playNext} disabled={!hasNext} className="h-6 w-6">
+              <SkipForward className="w-3 h-3" />
+            </Button>
+            <Button size="icon" variant="ghost" onClick={() => setIsMiniMode(false)} className="h-6 w-6">
+              <Maximize2 className="w-3 h-3" />
+            </Button>
+          </div>
+        </Card>
+        {/* Hidden iframe for playback */}
+        <div className="w-0 h-0 overflow-hidden">
+          <iframe
+            ref={iframeRef}
+            key={currentTrack.id}
+            src={`https://www.youtube.com/embed/${currentTrack.id}?autoplay=1&rel=0&modestbranding=1&enablejsapi=1`}
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowFullScreen
+          />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="fixed bottom-20 left-0 right-0 z-40 px-4 pb-4">
       <Card className="bg-zinc-900/95 backdrop-blur border-zinc-800 overflow-hidden">
         {/* Video Player - Hidden but playing */}
-        <div className="w-0 h-0 overflow-hidden">
+        <div className="w-0 h-0 overflow-hidden" ref={videoContainerRef}>
           <iframe
             ref={iframeRef}
             key={currentTrack.id}
@@ -540,6 +722,25 @@ export function GlobalPlayer() {
                 </DialogContent>
               </Dialog>
 
+              {/* Equalizer */}
+              <Equalizer />
+
+              {/* Lyrics */}
+              <LyricsPanel
+                trackId={currentTrack.id}
+                trackTitle={currentTrack.title}
+                trackArtist={currentTrack.artist}
+              />
+
+              {/* URL Import */}
+              <UrlImport />
+
+              {/* Audio Visualizer */}
+              <AudioVisualizer isPlaying={isPlaying} />
+
+              {/* Focus Timer */}
+              <FocusTimer />
+
               {/* Favorite */}
               <Button
                 size="icon"
@@ -648,42 +849,28 @@ export function GlobalPlayer() {
                     {queue.length === 0 ? (
                       <p className="text-center text-zinc-500 py-8">No tracks in queue</p>
                     ) : (
-                      queue.map((track, index) => (
-                        <div
-                          key={`${track.id}-${index}`}
-                          className={`flex items-center gap-3 p-2 rounded ${
-                            index === currentIndex ? 'bg-purple-900/50' : 'hover:bg-zinc-800'
-                          }`}
+                      <DndContext
+                        sensors={sensors}
+                        collisionDetection={closestCenter}
+                        onDragEnd={handleDragEnd}
+                      >
+                        <SortableContext
+                          items={queue.map((track, i) => `${track.id}-${i}`)}
+                          strategy={verticalListSortingStrategy}
                         >
-                          <img
-                            src={track.thumbnail}
-                            alt={track.title}
-                            className="w-10 h-10 rounded object-cover"
-                            onError={(e) => {
-                              e.currentTarget.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="40" height="40"%3E%3Crect fill="%23333" width="40" height="40"/%3E%3C/svg%3E';
-                            }}
-                          />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium truncate text-white">{track.title}</p>
-                            <p className="text-xs text-zinc-400 truncate">{track.artist}</p>
+                          <div className="space-y-2">
+                            {queue.map((track, index) => (
+                              <SortableQueueItem
+                                key={`${track.id}-${index}`}
+                                track={track}
+                                index={index}
+                                currentIndex={currentIndex}
+                                onRemove={() => removeFromQueue(index)}
+                              />
+                            ))}
                           </div>
-                          {index === currentIndex && (
-                            <span className="text-xs bg-purple-600 px-2 py-0.5 rounded text-white">
-                              Playing
-                            </span>
-                          )}
-                          {index !== currentIndex && (
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="h-6 w-6 shrink-0"
-                              onClick={() => removeFromQueue(index)}
-                            >
-                              <X className="w-3 h-3 text-zinc-400" />
-                            </Button>
-                          )}
-                        </div>
-                      ))
+                        </SortableContext>
+                      </DndContext>
                     )}
                   </div>
                 </SheetContent>
@@ -711,6 +898,28 @@ export function GlobalPlayer() {
                   className="w-20"
                 />
               </div>
+
+              {/* Picture-in-Picture */}
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={handlePictureInPicture}
+                className="h-8 w-8"
+                title="Picture-in-Picture"
+              >
+                <PictureInPicture className="w-4 h-4 text-white" />
+              </Button>
+
+              {/* Minimize */}
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => setIsMiniMode(true)}
+                className="h-8 w-8"
+                title="Minimize player"
+              >
+                <Minimize2 className="w-4 h-4 text-white" />
+              </Button>
 
               {/* Close */}
               <Button

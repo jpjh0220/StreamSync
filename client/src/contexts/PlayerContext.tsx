@@ -17,6 +17,7 @@ interface PlayerContextType {
   queue: Track[];
   addToQueue: (track: Track) => void;
   removeFromQueue: (index: number) => void;
+  reorderQueue: (oldIndex: number, newIndex: number) => void;
   clearQueue: () => void;
   playNext: () => void;
   playPrevious: () => void;
@@ -214,6 +215,24 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setCurrentTrack(null);
   }, []);
 
+  const reorderQueue = useCallback((oldIndex: number, newIndex: number) => {
+    setQueue((prev) => {
+      const newQueue = [...prev];
+      const [movedTrack] = newQueue.splice(oldIndex, 1);
+      newQueue.splice(newIndex, 0, movedTrack);
+      return newQueue;
+    });
+
+    // Update current index if needed
+    if (oldIndex === currentIndex) {
+      setCurrentIndex(newIndex);
+    } else if (oldIndex < currentIndex && newIndex >= currentIndex) {
+      setCurrentIndex(currentIndex - 1);
+    } else if (oldIndex > currentIndex && newIndex <= currentIndex) {
+      setCurrentIndex(currentIndex + 1);
+    }
+  }, [currentIndex]);
+
   const playNext = useCallback(() => {
     if (repeatMode === 'one' && currentTrack) {
       // Repeat current track
@@ -344,6 +363,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       queue,
       addToQueue,
       removeFromQueue,
+      reorderQueue,
       clearQueue,
       playNext,
       playPrevious,
