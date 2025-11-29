@@ -15,6 +15,9 @@ import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { Equalizer } from './Equalizer';
+import { LyricsPanel } from './LyricsPanel';
+import { UrlImport } from './UrlImport';
 
 interface Track {
   id: string;
@@ -716,6 +719,19 @@ export function GlobalPlayer() {
                   </div>
                 </DialogContent>
               </Dialog>
+
+              {/* Equalizer */}
+              <Equalizer />
+
+              {/* Lyrics */}
+              <LyricsPanel
+                trackId={currentTrack.id}
+                trackTitle={currentTrack.title}
+                trackArtist={currentTrack.artist}
+              />
+
+              {/* URL Import */}
+              <UrlImport />
 
               {/* Favorite */}
               <Button
