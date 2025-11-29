@@ -9,8 +9,9 @@ import { GlobalPlayer } from "./components/GlobalPlayer";
 import { OfflineIndicator } from "./components/OfflineIndicator";
 import Home from "./pages/Home";
 import Library from "./pages/Library";
+import History from "./pages/History";
 import { Button } from "./components/ui/button";
-import { Home as HomeIcon, Library as LibraryIcon, Keyboard } from "lucide-react";
+import { Home as HomeIcon, Library as LibraryIcon, Clock, Keyboard } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "./components/ui/dialog";
 
 function Router() {
@@ -26,6 +27,7 @@ function Router() {
         <Switch>
           <Route path={"/"} component={Home} />
           <Route path={"/library"} component={Library} />
+          <Route path={"/history"} component={History} />
           <Route path={"/404"} component={NotFound} />
           <Route component={NotFound} />
         </Switch>
@@ -57,6 +59,16 @@ function Router() {
             >
               <LibraryIcon className="w-6 h-6" />
               <span className="text-xs">Library</span>
+            </Button>
+            <Button
+              variant="ghost"
+              className={`flex flex-col items-center gap-1 h-auto py-2 px-6 ${
+                location === '/history' ? 'text-purple-400' : 'text-zinc-400'
+              }`}
+              onClick={() => setLocation('/history')}
+            >
+              <Clock className="w-6 h-6" />
+              <span className="text-xs">History</span>
             </Button>
 
             {/* Keyboard Shortcuts Help */}
