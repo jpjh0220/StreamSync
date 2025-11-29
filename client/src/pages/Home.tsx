@@ -87,25 +87,12 @@ export default function Home() {
     addRecentSearch(searchQuery.trim());
 
     try {
-      const [youtubeResults, soundcloudResults] = await Promise.allSettled([
-        searchYouTubeMutation.mutateAsync({ query: searchQuery, limit: 15 }),
-        searchSoundCloudMutation.mutateAsync({ query: searchQuery, limit: 15 })
-      ]);
+      // YouTube-only search for faster results
+      const youtubeResults = await searchYouTubeMutation.mutateAsync({ query: searchQuery, limit: 20 });
 
-      const youtube = youtubeResults.status === 'fulfilled' ? youtubeResults.value : [];
-      const soundcloud = soundcloudResults.status === 'fulfilled' ? soundcloudResults.value : [];
+      setSearchResults(youtubeResults);
 
-      const combined: Track[] = [];
-      const maxLength = Math.max(youtube.length, soundcloud.length);
-
-      for (let i = 0; i < maxLength; i++) {
-        if (youtube[i]) combined.push(youtube[i]);
-        if (soundcloud[i]) combined.push(soundcloud[i]);
-      }
-
-      setSearchResults(combined);
-
-      if (combined.length === 0) {
+      if (youtubeResults.length === 0) {
         toast.info("No results found");
       }
     } catch (error) {
@@ -193,7 +180,7 @@ export default function Home() {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-              placeholder="Search YouTube and SoundCloud..."
+              placeholder="Search YouTube..."
               className="flex-1 bg-zinc-800 border-zinc-700 text-white"
             />
             <Button
@@ -279,19 +266,11 @@ export default function Home() {
                       setIsSearching(true);
                       setSearchResults([]);
                       addRecentSearch(search);
-                      Promise.allSettled([
-                        searchYouTubeMutation.mutateAsync({ query: search, limit: 15 }),
-                        searchSoundCloudMutation.mutateAsync({ query: search, limit: 15 })
-                      ]).then(([youtubeResults, soundcloudResults]) => {
-                        const youtube = youtubeResults.status === 'fulfilled' ? youtubeResults.value : [];
-                        const soundcloud = soundcloudResults.status === 'fulfilled' ? soundcloudResults.value : [];
-                        const combined: Track[] = [];
-                        const maxLength = Math.max(youtube.length, soundcloud.length);
-                        for (let i = 0; i < maxLength; i++) {
-                          if (youtube[i]) combined.push(youtube[i]);
-                          if (soundcloud[i]) combined.push(soundcloud[i]);
-                        }
-                        setSearchResults(combined);
+                      // YouTube-only search for faster results
+                      searchYouTubeMutation.mutateAsync({ query: search, limit: 20 }).then((results) => {
+                        setSearchResults(results);
+                        setIsSearching(false);
+                      }).catch(() => {
                         setIsSearching(false);
                       });
                     }}
