@@ -514,11 +514,12 @@ export function GlobalPlayer() {
           </div>
         </Card>
         {/* Hidden iframe for playback */}
-        <div className="w-0 h-0 overflow-hidden">
+        <div className="absolute opacity-0 pointer-events-none w-[1px] h-[1px]">
           <iframe
             ref={iframeRef}
             key={currentTrack.id}
-            src={`https://www.youtube.com/embed/${currentTrack.id}?autoplay=1&rel=0&modestbranding=1&enablejsapi=1`}
+            src={`https://www.youtube.com/embed/${currentTrack.id}?autoplay=1&mute=0&rel=0&modestbranding=1&enablejsapi=1&playsinline=1`}
+            className="w-full h-full"
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
             allowFullScreen
           />
@@ -530,12 +531,12 @@ export function GlobalPlayer() {
   return (
     <div className="fixed bottom-20 left-0 right-0 z-40 px-4 pb-4">
       <Card className="bg-zinc-900/95 backdrop-blur border-zinc-800 overflow-hidden">
-        {/* Video Player - Hidden but playing */}
-        <div className="w-0 h-0 overflow-hidden" ref={videoContainerRef}>
+        {/* Video Player - Hidden with opacity but with dimensions */}
+        <div className="absolute opacity-0 pointer-events-none w-[1px] h-[1px]" ref={videoContainerRef}>
           <iframe
             ref={iframeRef}
             key={currentTrack.id}
-            src={`https://www.youtube.com/embed/${currentTrack.id}?autoplay=1&rel=0&modestbranding=1&enablejsapi=1`}
+            src={`https://www.youtube.com/embed/${currentTrack.id}?autoplay=1&mute=0&rel=0&modestbranding=1&enablejsapi=1&playsinline=1`}
             className="w-full h-full"
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
             allowFullScreen
