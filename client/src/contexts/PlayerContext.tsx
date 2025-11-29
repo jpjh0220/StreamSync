@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, ReactNode, useCallback } from 'react';
+import React, { createContext, useContext, useState, ReactNode, useCallback, useEffect } from 'react';
 
 interface Track {
   id: string;
@@ -37,17 +37,45 @@ interface PlayerContextType {
   playHistory: Track[];
   addToHistory: (track: Track) => void;
   clearHistory: () => void;
+  sleepTimer: number | null; // minutes remaining
+  setSleepTimer: (minutes: number | null) => void;
 }
 
 const PlayerContext = createContext<PlayerContextType | undefined>(undefined);
 
 export function PlayerProvider({ children }: { children: ReactNode }) {
-  const [currentTrack, setCurrentTrack] = useState<Track | null>(null);
-  const [queue, setQueue] = useState<Track[]>([]);
+  // Persistent queue with localStorage
+  const [queue, setQueue] = useState<Track[]>(() => {
+    try {
+      const saved = localStorage.getItem('playerQueue');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const [currentTrack, setCurrentTrack] = useState<Track | null>(() => {
+    try {
+      const saved = localStorage.getItem('currentTrack');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  const [currentIndex, setCurrentIndex] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem('currentIndex');
+      return saved ? parseInt(saved, 10) : -1;
+    } catch {
+      return -1;
+    }
+  });
+
   const [originalQueue, setOriginalQueue] = useState<Track[]>([]); // For shuffle
-  const [currentIndex, setCurrentIndex] = useState<number>(-1);
   const [shuffle, setShuffle] = useState<boolean>(false);
   const [repeatMode, setRepeatMode] = useState<RepeatMode>('off');
+  const [sleepTimer, setSleepTimerState] = useState<number | null>(null); // seconds remaining
 
   // Persistent favorites with localStorage
   const [favorites, setFavorites] = useState<Set<string>>(() => {
@@ -78,6 +106,51 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       return [];
     }
   });
+
+  // Persist queue to localStorage
+  useEffect(() => {
+    localStorage.setItem('playerQueue', JSON.stringify(queue));
+  }, [queue]);
+
+  // Persist current track to localStorage
+  useEffect(() => {
+    if (currentTrack) {
+      localStorage.setItem('currentTrack', JSON.stringify(currentTrack));
+    } else {
+      localStorage.removeItem('currentTrack');
+    }
+  }, [currentTrack]);
+
+  // Persist current index to localStorage
+  useEffect(() => {
+    localStorage.setItem('currentIndex', currentIndex.toString());
+  }, [currentIndex]);
+
+  // Sleep timer countdown
+  useEffect(() => {
+    if (sleepTimer === null || sleepTimer <= 0) return;
+
+    const interval = setInterval(() => {
+      setSleepTimerState(prev => {
+        if (prev === null || prev <= 1) {
+          // Timer expired - stop playback
+          setCurrentTrack(null);
+          return null;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [sleepTimer]);
+
+  const setSleepTimer = useCallback((minutes: number | null) => {
+    if (minutes === null) {
+      setSleepTimerState(null);
+    } else {
+      setSleepTimerState(minutes * 60); // Convert to seconds
+    }
+  }, []);
 
   const playTrack = useCallback((track: Track, addToQueueIfNotPlaying: boolean = true) => {
     if (addToQueueIfNotPlaying && !currentTrack) {
@@ -276,6 +349,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       playHistory,
       addToHistory,
       clearHistory,
+      sleepTimer,
+      setSleepTimer,
     }}>
       {children}
     </PlayerContext.Provider>
