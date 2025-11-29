@@ -39,6 +39,8 @@ interface PlayerContextType {
   clearHistory: () => void;
   sleepTimer: number | null; // minutes remaining
   setSleepTimer: (minutes: number | null) => void;
+  playbackSpeed: number;
+  setPlaybackSpeed: (speed: number) => void;
 }
 
 const PlayerContext = createContext<PlayerContextType | undefined>(undefined);
@@ -76,6 +78,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [shuffle, setShuffle] = useState<boolean>(false);
   const [repeatMode, setRepeatMode] = useState<RepeatMode>('off');
   const [sleepTimer, setSleepTimerState] = useState<number | null>(null); // seconds remaining
+  const [playbackSpeed, setPlaybackSpeedState] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem('playbackSpeed');
+      return saved ? parseFloat(saved) : 1;
+    } catch {
+      return 1;
+    }
+  });
 
   // Persistent favorites with localStorage
   const [favorites, setFavorites] = useState<Set<string>>(() => {
@@ -150,6 +160,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     } else {
       setSleepTimerState(minutes * 60); // Convert to seconds
     }
+  }, []);
+
+  const setPlaybackSpeed = useCallback((speed: number) => {
+    setPlaybackSpeedState(speed);
+    localStorage.setItem('playbackSpeed', speed.toString());
   }, []);
 
   const playTrack = useCallback((track: Track, addToQueueIfNotPlaying: boolean = true) => {
@@ -351,6 +366,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       clearHistory,
       sleepTimer,
       setSleepTimer,
+      playbackSpeed,
+      setPlaybackSpeed,
     }}>
       {children}
     </PlayerContext.Provider>

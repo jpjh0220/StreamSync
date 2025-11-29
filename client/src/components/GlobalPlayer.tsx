@@ -1,7 +1,7 @@
 import { usePlayer } from "@/contexts/PlayerContext";
 import { Card } from "./ui/card";
 import { Button } from "./ui/button";
-import { Heart, Play, Pause, Volume2, VolumeX, X, SkipBack, SkipForward, ListMusic, Shuffle, Repeat, Repeat1, Save, Timer } from "lucide-react";
+import { Heart, Play, Pause, Volume2, VolumeX, X, SkipBack, SkipForward, ListMusic, Shuffle, Repeat, Repeat1, Save, Timer, Gauge } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { useAuth } from "@/_core/hooks/useAuth";
@@ -34,6 +34,8 @@ export function GlobalPlayer() {
     addToHistory,
     sleepTimer,
     setSleepTimer,
+    playbackSpeed,
+    setPlaybackSpeed,
   } = usePlayer();
   const toggleFavoriteMutation = trpc.tracks.toggleFavorite.useMutation();
 
@@ -277,6 +279,16 @@ export function GlobalPlayer() {
     }
   }, [currentTrack?.id, currentTrack, addToHistory]);
 
+  // Set playback speed when it changes
+  useEffect(() => {
+    if (iframeRef.current?.contentWindow) {
+      iframeRef.current.contentWindow.postMessage(
+        JSON.stringify({ event: 'command', func: 'setPlaybackRate', args: [playbackSpeed] }),
+        '*'
+      );
+    }
+  }, [playbackSpeed, currentTrack?.id]);
+
   // Auto-play next track when video ends
   useEffect(() => {
     if (!iframeRef.current) return;
@@ -490,6 +502,40 @@ export function GlobalPlayer() {
                       Cancel Timer
                     </Button>
                   )}
+                </DialogContent>
+              </Dialog>
+
+              {/* Playback Speed */}
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-8 w-8"
+                    title="Playback speed"
+                  >
+                    <Gauge className={`w-4 h-4 ${playbackSpeed !== 1 ? 'text-purple-400' : 'text-zinc-400'}`} />
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="bg-zinc-900 border-zinc-800 text-white">
+                  <DialogHeader>
+                    <DialogTitle>Playback Speed</DialogTitle>
+                    <DialogDescription className="text-zinc-400">
+                      Current speed: {playbackSpeed}x
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="grid grid-cols-3 gap-2 mt-4">
+                    {[0.5, 0.75, 1, 1.25, 1.5, 2].map((speed) => (
+                      <Button
+                        key={speed}
+                        onClick={() => setPlaybackSpeed(speed)}
+                        variant={playbackSpeed === speed ? "default" : "outline"}
+                        className={playbackSpeed === speed ? "bg-purple-600 hover:bg-purple-700" : "border-zinc-700 hover:bg-zinc-800"}
+                      >
+                        {speed}x
+                      </Button>
+                    ))}
+                  </div>
                 </DialogContent>
               </Dialog>
 
