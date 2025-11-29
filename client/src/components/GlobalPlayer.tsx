@@ -18,6 +18,8 @@ import { CSS } from '@dnd-kit/utilities';
 import { Equalizer } from './Equalizer';
 import { LyricsPanel } from './LyricsPanel';
 import { UrlImport } from './UrlImport';
+import { AudioVisualizer } from './AudioVisualizer';
+import { FocusTimer } from './FocusTimer';
 
 interface Track {
   id: string;
@@ -732,6 +734,12 @@ export function GlobalPlayer() {
 
               {/* URL Import */}
               <UrlImport />
+
+              {/* Audio Visualizer */}
+              <AudioVisualizer isPlaying={isPlaying} />
+
+              {/* Focus Timer */}
+              <FocusTimer />
 
               {/* Favorite */}
               <Button
