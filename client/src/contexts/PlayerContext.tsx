@@ -24,6 +24,7 @@ interface PlayerContextType {
   currentIndex: number;
   hasNext: boolean;
   hasPrevious: boolean;
+  nextTrack: Track | null; // For gapless playback preloading
   playTrack: (track: Track, addToQueueIfNotPlaying?: boolean) => void;
   shuffle: boolean;
   toggleShuffle: () => void;
@@ -42,6 +43,8 @@ interface PlayerContextType {
   setSleepTimer: (minutes: number | null) => void;
   playbackSpeed: number;
   setPlaybackSpeed: (speed: number) => void;
+  radioMode: boolean;
+  toggleRadioMode: () => void;
 }
 
 const PlayerContext = createContext<PlayerContextType | undefined>(undefined);
@@ -78,6 +81,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [originalQueue, setOriginalQueue] = useState<Track[]>([]); // For shuffle
   const [shuffle, setShuffle] = useState<boolean>(false);
   const [repeatMode, setRepeatMode] = useState<RepeatMode>('off');
+  const [radioMode, setRadioMode] = useState<boolean>(false);
   const [sleepTimer, setSleepTimerState] = useState<number | null>(null); // seconds remaining
   const [playbackSpeed, setPlaybackSpeedState] = useState<number>(() => {
     try {
@@ -259,8 +263,22 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }
   }, [currentIndex, queue]);
 
-  const hasNext = currentIndex < queue.length - 1 || repeatMode === 'all';
+  const hasNext = currentIndex < queue.length - 1 || repeatMode === 'all' || radioMode;
   const hasPrevious = currentIndex > 0;
+
+  // Compute next track for gapless playback preloading
+  const nextTrack = (() => {
+    if (repeatMode === 'one' && currentTrack) {
+      return currentTrack;
+    }
+    if (currentIndex < queue.length - 1) {
+      return queue[currentIndex + 1];
+    }
+    if (repeatMode === 'all' && queue.length > 0) {
+      return queue[0];
+    }
+    return null;
+  })();
 
   const toggleShuffle = useCallback(() => {
     if (!shuffle) {
@@ -356,6 +374,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem('playHistory');
   }, []);
 
+  const toggleRadioMode = useCallback(() => {
+    setRadioMode(prev => !prev);
+  }, []);
+
   return (
     <PlayerContext.Provider value={{
       currentTrack,
@@ -370,6 +392,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       currentIndex,
       hasNext,
       hasPrevious,
+      nextTrack,
       playTrack,
       shuffle,
       toggleShuffle,
@@ -388,6 +411,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       setSleepTimer,
       playbackSpeed,
       setPlaybackSpeed,
+      radioMode,
+      toggleRadioMode,
     }}>
       {children}
     </PlayerContext.Provider>
