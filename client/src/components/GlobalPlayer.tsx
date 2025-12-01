@@ -317,6 +317,22 @@ export function GlobalPlayer() {
     return () => window.removeEventListener('message', handleMessage);
   }, [hasNext, playNext, repeatMode]);
 
+  // Keep playing when tab/app loses focus (background playback)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      // If music was playing and tab becomes visible again, ensure it's still playing
+      if (!document.hidden && isPlaying && iframeRef.current?.contentWindow) {
+        iframeRef.current.contentWindow.postMessage(
+          JSON.stringify({ event: 'command', func: 'playVideo', args: '' }),
+          '*'
+        );
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [isPlaying]);
+
   if (!currentTrack) return null;
 
   if (error) {
