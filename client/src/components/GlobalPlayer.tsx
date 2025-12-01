@@ -48,6 +48,7 @@ export function GlobalPlayer() {
   const [playlistDescription, setPlaylistDescription] = useState("");
   const [isSavingPlaylist, setIsSavingPlaylist] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
 
   const createPlaylistMutation = trpc.playlists.create.useMutation();
   const addTrackToPlaylistMutation = trpc.playlists.addTrack.useMutation();
@@ -317,20 +318,102 @@ export function GlobalPlayer() {
     return () => window.removeEventListener('message', handleMessage);
   }, [hasNext, playNext, repeatMode]);
 
+  // Initialize Audio Context for iOS (keeps audio system engaged)
+  useEffect(() => {
+    if (!audioContextRef.current && typeof window !== 'undefined' && 'AudioContext' in window) {
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      audioContextRef.current = new AudioContextClass();
+
+      // Resume on user interaction (required for iOS)
+      const resumeAudioContext = () => {
+        if (audioContextRef.current?.state === 'suspended') {
+          audioContextRef.current.resume();
+        }
+      };
+
+      document.addEventListener('touchstart', resumeAudioContext, { once: true });
+      document.addEventListener('click', resumeAudioContext, { once: true });
+
+      return () => {
+        document.removeEventListener('touchstart', resumeAudioContext);
+        document.removeEventListener('click', resumeAudioContext);
+      };
+    }
+  }, []);
+
+  // Keep service worker alive for background audio (iOS)
+  useEffect(() => {
+    if (!('serviceWorker' in navigator) || !isPlaying) return;
+
+    const keepAliveInterval = setInterval(() => {
+      navigator.serviceWorker.controller?.postMessage({
+        type: 'KEEP_ALIVE',
+        timestamp: Date.now()
+      });
+    }, 5000); // Every 5 seconds
+
+    return () => clearInterval(keepAliveInterval);
+  }, [isPlaying]);
+
   // Keep playing when tab/app loses focus (background playback)
   useEffect(() => {
     const handleVisibilityChange = () => {
       // If music was playing and tab becomes visible again, ensure it's still playing
       if (!document.hidden && isPlaying && iframeRef.current?.contentWindow) {
-        iframeRef.current.contentWindow.postMessage(
-          JSON.stringify({ event: 'command', func: 'playVideo', args: '' }),
-          '*'
-        );
+        // Resume audio context first (iOS requirement)
+        if (audioContextRef.current?.state === 'suspended') {
+          audioContextRef.current.resume();
+        }
+
+        // Then resume video playback
+        setTimeout(() => {
+          iframeRef.current?.contentWindow?.postMessage(
+            JSON.stringify({ event: 'command', func: 'playVideo', args: '' }),
+            '*'
+          );
+        }, 100);
+      }
+    };
+
+    const handlePageShow = (e: PageTransitionEvent) => {
+      // Handle iOS back/forward cache (bfcache)
+      if (e.persisted && isPlaying && iframeRef.current?.contentWindow) {
+        if (audioContextRef.current?.state === 'suspended') {
+          audioContextRef.current.resume();
+        }
+        setTimeout(() => {
+          iframeRef.current?.contentWindow?.postMessage(
+            JSON.stringify({ event: 'command', func: 'playVideo', args: '' }),
+            '*'
+          );
+        }, 100);
+      }
+    };
+
+    const handleFocus = () => {
+      // Aggressively resume on window focus
+      if (isPlaying && iframeRef.current?.contentWindow) {
+        if (audioContextRef.current?.state === 'suspended') {
+          audioContextRef.current.resume();
+        }
+        setTimeout(() => {
+          iframeRef.current?.contentWindow?.postMessage(
+            JSON.stringify({ event: 'command', func: 'playVideo', args: '' }),
+            '*'
+          );
+        }, 100);
       }
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('pageshow', handlePageShow);
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('pageshow', handlePageShow);
+      window.removeEventListener('focus', handleFocus);
+    };
   }, [isPlaying]);
 
   if (!currentTrack) return null;
@@ -365,14 +448,14 @@ export function GlobalPlayer() {
           <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-purple-600 via-pink-600 to-purple-600 animate-pulse" />
         )}
 
-        {/* Video Player - Hidden but playing */}
-        <div className="w-0 h-0 overflow-hidden">
+        {/* Video Player - 1px visible for iOS (positioned off-screen) */}
+        <div className="fixed -left-[9999px] -top-[9999px] w-[1px] h-[1px]">
           <iframe
             ref={iframeRef}
             key={currentTrack.id}
-            src={`https://www.youtube.com/embed/${currentTrack.id}?autoplay=1&rel=0&modestbranding=1&enablejsapi=1`}
+            src={`https://www.youtube.com/embed/${currentTrack.id}?autoplay=1&rel=0&modestbranding=1&enablejsapi=1&playsinline=1&widget_referrer=${encodeURIComponent(window.location.origin)}&origin=${encodeURIComponent(window.location.origin)}`}
             className="w-full h-full"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
             allowFullScreen
             title={currentTrack.title}
             onError={() => setError(true)}

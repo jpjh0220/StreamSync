@@ -1,6 +1,6 @@
-const CACHE_NAME = 'streamsync-v2';
-const STATIC_CACHE = 'streamsync-static-v2';
-const DYNAMIC_CACHE = 'streamsync-dynamic-v2';
+const CACHE_NAME = 'streamsync-v3';
+const STATIC_CACHE = 'streamsync-static-v3';
+const DYNAMIC_CACHE = 'streamsync-dynamic-v3';
 
 const urlsToCache = [
   '/',
@@ -117,3 +117,46 @@ async function syncPlayCounts() {
   // This would sync offline play counts when back online
   console.log('Syncing play counts...');
 }
+
+// Handle messages from the client (for background audio control)
+self.addEventListener('message', (event) => {
+  console.log('[SW] Message received:', event.data);
+
+  if (event.data && event.data.type === 'KEEP_ALIVE') {
+    // Keep service worker alive for background audio
+    event.waitUntil(
+      Promise.resolve().then(() => {
+        console.log('[SW] Keeping service worker alive');
+      })
+    );
+  }
+
+  if (event.data && event.data.type === 'AUDIO_PLAYING') {
+    // Handle audio playback state
+    console.log('[SW] Audio playing state:', event.data.playing);
+  }
+
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+});
+
+// Periodic keep-alive ping to prevent service worker from sleeping
+let keepAliveInterval;
+self.addEventListener('activate', (event) => {
+  console.log('[SW] Setting up keep-alive for iOS background audio');
+
+  // Clear any existing interval
+  if (keepAliveInterval) {
+    clearInterval(keepAliveInterval);
+  }
+
+  // Send periodic message to keep SW active
+  keepAliveInterval = setInterval(() => {
+    self.clients.matchAll().then(clients => {
+      clients.forEach(client => {
+        client.postMessage({ type: 'SW_KEEP_ALIVE' });
+      });
+    });
+  }, 10000); // Every 10 seconds
+});
