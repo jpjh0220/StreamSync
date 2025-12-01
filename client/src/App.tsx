@@ -4,9 +4,10 @@ import NotFound from "@/pages/NotFound";
 import { Route, Switch, useLocation } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
-import { PlayerProvider } from "./contexts/PlayerContext";
+import { PlayerProvider, usePlayer } from "./contexts/PlayerContext";
 import { GlobalPlayer } from "./components/GlobalPlayer";
 import { OfflineIndicator } from "./components/OfflineIndicator";
+import { AnimatedBackground } from "./components/AnimatedBackground";
 import Home from "./pages/Home";
 import Library from "./pages/Library";
 import History from "./pages/History";
@@ -15,10 +16,13 @@ import { Button } from "./components/ui/button";
 import { Home as HomeIcon, Library as LibraryIcon, Clock, Keyboard, Palette, BarChart3 } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "./components/ui/dialog";
 import { useTheme } from "./contexts/ThemeContext";
+import { useState } from "react";
 
 function Router() {
   const [location, setLocation] = useLocation();
   const { colorTheme, setColorTheme } = useTheme();
+  const { currentTrack } = usePlayer();
+  const [isPlaying, setIsPlaying] = useState(false);
 
   const themeOptions: Array<{ name: string; value: "purple" | "blue" | "green" | "orange" | "pink"; color: string }> = [
     { name: "Purple", value: "purple", color: "bg-purple-600" },
@@ -30,6 +34,14 @@ function Router() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-zinc-900 via-zinc-900 to-black text-white">
+      {/* Animated Background from Album Art */}
+      {currentTrack && (
+        <AnimatedBackground
+          imageUrl={currentTrack.thumbnail}
+          isPlaying={isPlaying}
+        />
+      )}
+
       {/* Offline Indicator */}
       <OfflineIndicator />
 

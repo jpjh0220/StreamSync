@@ -1,7 +1,7 @@
 import { usePlayer } from "@/contexts/PlayerContext";
 import { Card } from "./ui/card";
 import { Button } from "./ui/button";
-import { Heart, Play, Pause, Volume2, VolumeX, X, SkipBack, SkipForward, ListMusic, Shuffle, Repeat, Repeat1, Save, Timer, Gauge, Trash2 } from "lucide-react";
+import { Heart, Play, Pause, Volume2, VolumeX, X, SkipBack, SkipForward, ListMusic, Shuffle, Repeat, Repeat1, Save, Timer, Gauge, Trash2, Radio } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { useAuth } from "@/_core/hooks/useAuth";
@@ -12,6 +12,9 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
+import { AudioEffects } from "./AudioEffects";
+import { MiniVisualizer } from "./MiniVisualizer";
+import { TrackWaveform } from "./TrackWaveform";
 
 export function GlobalPlayer() {
   const { user } = useAuth();
@@ -24,6 +27,7 @@ export function GlobalPlayer() {
     playPrevious,
     hasNext,
     hasPrevious,
+    nextTrack,
     queue,
     removeFromQueue,
     clearQueue,
@@ -37,6 +41,8 @@ export function GlobalPlayer() {
     setSleepTimer,
     playbackSpeed,
     setPlaybackSpeed,
+    radioMode,
+    toggleRadioMode,
   } = usePlayer();
   const toggleFavoriteMutation = trpc.tracks.toggleFavorite.useMutation();
 
@@ -48,11 +54,13 @@ export function GlobalPlayer() {
   const [playlistDescription, setPlaylistDescription] = useState("");
   const [isSavingPlaylist, setIsSavingPlaylist] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const preloadIframeRef = useRef<HTMLIFrameElement>(null); // For gapless playback
   const audioContextRef = useRef<AudioContext | null>(null);
 
   const createPlaylistMutation = trpc.playlists.create.useMutation();
   const addTrackToPlaylistMutation = trpc.playlists.addTrack.useMutation();
   const saveTrackMutation = trpc.tracks.save.useMutation();
+  const searchYouTubeMutation = trpc.music.searchYouTube.useMutation();
 
   const handleToggleFavorite = async () => {
     if (!currentTrack) return;
@@ -355,6 +363,45 @@ export function GlobalPlayer() {
     return () => clearInterval(keepAliveInterval);
   }, [isPlaying]);
 
+  // Radio Mode: Auto-queue related tracks
+  useEffect(() => {
+    if (!radioMode || !currentTrack) return;
+
+    // Check if we need more tracks (queue has less than 3 songs after current)
+    const remainingTracks = queue.length - currentIndex - 1;
+    if (remainingTracks >= 3) return;
+
+    // Fetch related tracks based on current track
+    const fetchRelatedTracks = async () => {
+      try {
+        // Extract artist/song name for better search
+        const searchQuery = `${currentTrack.artist} ${currentTrack.title}`.trim();
+
+        const relatedTracks = await searchYouTubeMutation.mutateAsync({
+          query: searchQuery,
+          limit: 5
+        });
+
+        // Add related tracks to queue (skip if already in queue)
+        const queueIds = new Set(queue.map(t => t.id));
+        const newTracks = relatedTracks.filter(track =>
+          !queueIds.has(track.id) && track.id !== currentTrack.id
+        ).slice(0, 3);
+
+        if (newTracks.length > 0) {
+          newTracks.forEach(track => addToQueue(track));
+          toast.success(`🎵 Radio: Added ${newTracks.length} similar tracks to queue`, {
+            duration: 2000,
+          });
+        }
+      } catch (error) {
+        console.error('Failed to fetch related tracks for radio mode:', error);
+      }
+    };
+
+    fetchRelatedTracks();
+  }, [radioMode, currentTrack?.id, currentIndex, queue.length]);
+
   // Keep playing when tab/app loses focus (background playback)
   useEffect(() => {
     const handleVisibilityChange = () => {
@@ -462,17 +509,47 @@ export function GlobalPlayer() {
           />
         </div>
 
+        {/* Preload next track for gapless playback */}
+        {nextTrack && nextTrack.id !== currentTrack.id && (
+          <div className="fixed -left-[9999px] -top-[9999px] w-[1px] h-[1px]">
+            <iframe
+              ref={preloadIframeRef}
+              key={`preload-${nextTrack.id}`}
+              src={`https://www.youtube.com/embed/${nextTrack.id}?autoplay=0&rel=0&modestbranding=1&enablejsapi=1&playsinline=1&widget_referrer=${encodeURIComponent(window.location.origin)}&origin=${encodeURIComponent(window.location.origin)}`}
+              className="w-full h-full"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+              allowFullScreen
+              title={`Preload: ${nextTrack.title}`}
+            />
+          </div>
+        )}
+
         {/* Mini Player UI */}
         <div className="p-3">
-          <div className="flex items-center gap-3">
-            <img
-              src={currentTrack.thumbnail}
-              alt={currentTrack.title}
-              className="w-12 h-12 rounded object-cover"
-              onError={(e) => {
-                e.currentTarget.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="48" height="48"%3E%3Crect fill="%23333" width="48" height="48"/%3E%3C/svg%3E';
-              }}
+          {/* Track Waveform */}
+          <div className="mb-2 h-12 rounded overflow-hidden">
+            <TrackWaveform
+              isPlaying={isPlaying}
+              duration={currentTrack.duration}
+              className="w-full h-full"
             />
+          </div>
+
+          <div className="flex items-center gap-3">
+            <div className="relative w-12 h-12 shrink-0">
+              <img
+                src={currentTrack.thumbnail}
+                alt={currentTrack.title}
+                className="w-full h-full rounded object-cover"
+                onError={(e) => {
+                  e.currentTarget.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="48" height="48"%3E%3Crect fill="%23333" width="48" height="48"/%3E%3C/svg%3E';
+                }}
+              />
+              {/* Mini Visualizer Overlay */}
+              <div className="absolute inset-0 rounded overflow-hidden opacity-70">
+                <MiniVisualizer isPlaying={isPlaying} className="w-full h-full" />
+              </div>
+            </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
                 <h4 className="text-sm font-semibold truncate text-white">{currentTrack.title}</h4>
@@ -654,6 +731,20 @@ export function GlobalPlayer() {
                   </div>
                 </DialogContent>
               </Dialog>
+
+              {/* Audio Effects */}
+              <AudioEffects audioContextRef={audioContextRef} />
+
+              {/* Radio Mode */}
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={toggleRadioMode}
+                className="h-8 w-8"
+                title={radioMode ? "Radio mode on - Auto-queue similar tracks" : "Radio mode off"}
+              >
+                <Radio className={`w-4 h-4 ${radioMode ? 'text-purple-400' : 'text-zinc-400'}`} />
+              </Button>
 
               {/* Favorite */}
               <Button
