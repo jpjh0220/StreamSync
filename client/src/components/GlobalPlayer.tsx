@@ -56,11 +56,15 @@ export function GlobalPlayer() {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const preloadIframeRef = useRef<HTMLIFrameElement>(null); // For gapless playback
   const audioContextRef = useRef<AudioContext | null>(null);
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [useNativeAudio, setUseNativeAudio] = useState(true); // Prefer native audio
 
   const createPlaylistMutation = trpc.playlists.create.useMutation();
   const addTrackToPlaylistMutation = trpc.playlists.addTrack.useMutation();
   const saveTrackMutation = trpc.tracks.save.useMutation();
   const searchYouTubeMutation = trpc.music.searchYouTube.useMutation();
+  const getYouTubeStreamMutation = trpc.music.getYouTubeStream.useMutation();
 
   const handleToggleFavorite = async () => {
     if (!currentTrack) return;
@@ -98,48 +102,72 @@ export function GlobalPlayer() {
   }, []);
 
   const togglePlayPause = useCallback(() => {
-    if (isPlaying) {
-      sendCommand('pauseVideo');
-      setIsPlaying(false);
+    if (useNativeAudio && audioRef.current) {
+      // Control native audio element
+      if (isPlaying) {
+        audioRef.current.pause();
+        setIsPlaying(false);
+      } else {
+        audioRef.current.play().catch(err => {
+          console.error('Audio play failed:', err);
+          toast.error('Failed to play audio');
+        });
+        setIsPlaying(true);
+      }
     } else {
-      sendCommand('playVideo');
-      setIsPlaying(true);
+      // Fallback to iframe control
+      if (isPlaying) {
+        sendCommand('pauseVideo');
+        setIsPlaying(false);
+      } else {
+        sendCommand('playVideo');
+        setIsPlaying(true);
+      }
     }
-  }, [isPlaying, sendCommand]);
+  }, [isPlaying, sendCommand, useNativeAudio]);
 
   const toggleMute = useCallback(() => {
-    if (isMuted) {
-      sendCommand('unMute');
-      setIsMuted(false);
+    if (useNativeAudio && audioRef.current) {
+      audioRef.current.muted = !isMuted;
+      setIsMuted(!isMuted);
     } else {
-      sendCommand('mute');
-      setIsMuted(true);
+      if (isMuted) {
+        sendCommand('unMute');
+        setIsMuted(false);
+      } else {
+        sendCommand('mute');
+        setIsMuted(true);
+      }
     }
-  }, [isMuted, sendCommand]);
+  }, [isMuted, sendCommand, useNativeAudio]);
 
   const volumeUp = useCallback(() => {
     const newVolume = Math.min(100, volume + 10);
     setVolume(newVolume);
-    if (iframeRef.current?.contentWindow) {
+    if (useNativeAudio && audioRef.current) {
+      audioRef.current.volume = newVolume / 100;
+    } else if (iframeRef.current?.contentWindow) {
       iframeRef.current.contentWindow.postMessage(
         JSON.stringify({ event: 'command', func: 'setVolume', args: [newVolume] }),
         '*'
       );
     }
     if (isMuted && newVolume > 0) setIsMuted(false);
-  }, [volume, isMuted]);
+  }, [volume, isMuted, useNativeAudio]);
 
   const volumeDown = useCallback(() => {
     const newVolume = Math.max(0, volume - 10);
     setVolume(newVolume);
-    if (iframeRef.current?.contentWindow) {
+    if (useNativeAudio && audioRef.current) {
+      audioRef.current.volume = newVolume / 100;
+    } else if (iframeRef.current?.contentWindow) {
       iframeRef.current.contentWindow.postMessage(
         JSON.stringify({ event: 'command', func: 'setVolume', args: [newVolume] }),
         '*'
       );
     }
     if (newVolume === 0) setIsMuted(true);
-  }, [volume]);
+  }, [volume, useNativeAudio]);
 
   // Keyboard shortcuts
   useKeyboardShortcuts({
@@ -154,7 +182,9 @@ export function GlobalPlayer() {
   const handleVolumeChange = (value: number[]) => {
     const newVolume = value[0];
     setVolume(newVolume);
-    if (iframeRef.current?.contentWindow) {
+    if (useNativeAudio && audioRef.current) {
+      audioRef.current.volume = newVolume / 100;
+    } else if (iframeRef.current?.contentWindow) {
       iframeRef.current.contentWindow.postMessage(
         JSON.stringify({ event: 'command', func: 'setVolume', args: [newVolume] }),
         '*'
@@ -246,6 +276,7 @@ export function GlobalPlayer() {
     return `${secs}s`;
   };
 
+  // Enhanced MediaSession API for lock screen controls
   useEffect(() => {
     if (!currentTrack || !('mediaSession' in navigator)) return;
 
@@ -257,18 +288,55 @@ export function GlobalPlayer() {
       ]
     });
 
-    navigator.mediaSession.setActionHandler('play', () => {
-      sendCommand('playVideo');
-      setIsPlaying(true);
-    });
+    const handlePlay = () => {
+      if (useNativeAudio && audioRef.current) {
+        audioRef.current.play();
+        setIsPlaying(true);
+      } else {
+        sendCommand('playVideo');
+        setIsPlaying(true);
+      }
+    };
 
-    navigator.mediaSession.setActionHandler('pause', () => {
-      sendCommand('pauseVideo');
-      setIsPlaying(false);
-    });
+    const handlePause = () => {
+      if (useNativeAudio && audioRef.current) {
+        audioRef.current.pause();
+        setIsPlaying(false);
+      } else {
+        sendCommand('pauseVideo');
+        setIsPlaying(false);
+      }
+    };
 
+    const handleSeekTo = (details: any) => {
+      if (useNativeAudio && audioRef.current && details.seekTime !== undefined) {
+        audioRef.current.currentTime = details.seekTime;
+      }
+    };
+
+    const handleSeekBackward = () => {
+      if (useNativeAudio && audioRef.current) {
+        audioRef.current.currentTime = Math.max(0, audioRef.current.currentTime - 10);
+      }
+    };
+
+    const handleSeekForward = () => {
+      if (useNativeAudio && audioRef.current) {
+        audioRef.current.currentTime = Math.min(audioRef.current.duration, audioRef.current.currentTime + 10);
+      }
+    };
+
+    navigator.mediaSession.setActionHandler('play', handlePlay);
+    navigator.mediaSession.setActionHandler('pause', handlePause);
     navigator.mediaSession.setActionHandler('nexttrack', hasNext ? playNext : null);
     navigator.mediaSession.setActionHandler('previoustrack', hasPrevious ? playPrevious : null);
+
+    // Advanced controls (seeking) - only for native audio
+    if (useNativeAudio) {
+      navigator.mediaSession.setActionHandler('seekto', handleSeekTo);
+      navigator.mediaSession.setActionHandler('seekbackward', handleSeekBackward);
+      navigator.mediaSession.setActionHandler('seekforward', handleSeekForward);
+    }
 
     return () => {
       navigator.mediaSession.metadata = null;
@@ -276,8 +344,35 @@ export function GlobalPlayer() {
       navigator.mediaSession.setActionHandler('pause', null);
       navigator.mediaSession.setActionHandler('nexttrack', null);
       navigator.mediaSession.setActionHandler('previoustrack', null);
+      navigator.mediaSession.setActionHandler('seekto', null);
+      navigator.mediaSession.setActionHandler('seekbackward', null);
+      navigator.mediaSession.setActionHandler('seekforward', null);
     };
-  }, [currentTrack, hasNext, hasPrevious, playNext, playPrevious]);
+  }, [currentTrack, hasNext, hasPrevious, playNext, playPrevious, useNativeAudio]);
+
+  // Fetch audio stream URL for native audio playback
+  useEffect(() => {
+    if (!currentTrack || currentTrack.source !== 'youtube') {
+      setAudioUrl(null);
+      return;
+    }
+
+    const fetchAudioUrl = async () => {
+      try {
+        const streamData = await getYouTubeStreamMutation.mutateAsync({
+          videoId: currentTrack.id
+        });
+        setAudioUrl(streamData.url);
+        setUseNativeAudio(true);
+      } catch (error) {
+        console.warn('Failed to get audio stream, falling back to iframe:', error);
+        setAudioUrl(null);
+        setUseNativeAudio(false);
+      }
+    };
+
+    fetchAudioUrl();
+  }, [currentTrack?.id]);
 
   useEffect(() => {
     setIsPlaying(true);
@@ -295,13 +390,15 @@ export function GlobalPlayer() {
 
   // Set playback speed when it changes
   useEffect(() => {
-    if (iframeRef.current?.contentWindow) {
+    if (useNativeAudio && audioRef.current) {
+      audioRef.current.playbackRate = playbackSpeed;
+    } else if (iframeRef.current?.contentWindow) {
       iframeRef.current.contentWindow.postMessage(
         JSON.stringify({ event: 'command', func: 'setPlaybackRate', args: [playbackSpeed] }),
         '*'
       );
     }
-  }, [playbackSpeed, currentTrack?.id]);
+  }, [playbackSpeed, currentTrack?.id, useNativeAudio]);
 
   // Auto-play next track when video ends
   useEffect(() => {
@@ -495,19 +592,66 @@ export function GlobalPlayer() {
           <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-purple-600 via-pink-600 to-purple-600 animate-pulse" />
         )}
 
-        {/* Video Player - 1px visible for iOS (positioned off-screen) */}
-        <div className="fixed -left-[9999px] -top-[9999px] w-[1px] h-[1px]">
-          <iframe
-            ref={iframeRef}
-            key={currentTrack.id}
-            src={`https://www.youtube.com/embed/${currentTrack.id}?autoplay=1&rel=0&modestbranding=1&enablejsapi=1&playsinline=1&widget_referrer=${encodeURIComponent(window.location.origin)}&origin=${encodeURIComponent(window.location.origin)}`}
-            className="w-full h-full"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-            allowFullScreen
-            title={currentTrack.title}
-            onError={() => setError(true)}
+        {/* Native Audio Element for true background playback */}
+        {useNativeAudio && audioUrl && (
+          <audio
+            ref={audioRef}
+            src={audioUrl}
+            autoPlay
+            onPlay={() => setIsPlaying(true)}
+            onPause={() => setIsPlaying(false)}
+            onEnded={() => {
+              if (hasNext || repeatMode !== 'off') {
+                playNext();
+              } else {
+                setIsPlaying(false);
+              }
+            }}
+            onError={(e) => {
+              console.error('Native audio error:', e);
+              toast.error('Audio playback failed, switching to iframe mode');
+              setUseNativeAudio(false);
+              setAudioUrl(null);
+            }}
+            onVolumeChange={(e) => {
+              const audio = e.currentTarget;
+              setVolume(Math.round(audio.volume * 100));
+              setIsMuted(audio.muted);
+            }}
+            onTimeUpdate={(e) => {
+              const audio = e.currentTarget;
+              if ('mediaSession' in navigator && audio.duration) {
+                navigator.mediaSession.setPositionState({
+                  duration: audio.duration,
+                  playbackRate: audio.playbackRate,
+                  position: audio.currentTime,
+                });
+              }
+            }}
+            onLoadedMetadata={(e) => {
+              const audio = e.currentTarget;
+              audio.volume = volume / 100;
+              audio.playbackRate = playbackSpeed;
+            }}
+            className="hidden"
           />
-        </div>
+        )}
+
+        {/* Video Player - Fallback iframe for when native audio fails */}
+        {!useNativeAudio && (
+          <div className="fixed -left-[9999px] -top-[9999px] w-[1px] h-[1px]">
+            <iframe
+              ref={iframeRef}
+              key={currentTrack.id}
+              src={`https://www.youtube.com/embed/${currentTrack.id}?autoplay=1&rel=0&modestbranding=1&enablejsapi=1&playsinline=1&widget_referrer=${encodeURIComponent(window.location.origin)}&origin=${encodeURIComponent(window.location.origin)}`}
+              className="w-full h-full"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+              allowFullScreen
+              title={currentTrack.title}
+              onError={() => setError(true)}
+            />
+          </div>
+        )}
 
         {/* Preload next track for gapless playback */}
         {nextTrack && nextTrack.id !== currentTrack.id && (
