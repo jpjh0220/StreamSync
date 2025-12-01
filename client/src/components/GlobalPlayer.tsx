@@ -643,26 +643,24 @@ export function GlobalPlayer() {
             <iframe
               ref={iframeRef}
               key={currentTrack.id}
-              src={`https://www.youtube.com/embed/${currentTrack.id}?autoplay=1&rel=0&modestbranding=1&enablejsapi=1&playsinline=1&widget_referrer=${encodeURIComponent(window.location.origin)}&origin=${encodeURIComponent(window.location.origin)}`}
+              src={`https://www.youtube.com/embed/${currentTrack.id}?autoplay=1&rel=0&modestbranding=1&enablejsapi=1&playsinline=1&fs=0&widget_referrer=${encodeURIComponent(window.location.origin)}&origin=${encodeURIComponent(window.location.origin)}`}
               className="w-full h-full"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-              allowFullScreen
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
               title={currentTrack.title}
               onError={() => setError(true)}
             />
           </div>
         )}
 
-        {/* Preload next track for gapless playback */}
-        {nextTrack && nextTrack.id !== currentTrack.id && (
+        {/* Preload next track for gapless playback - only for iframe mode */}
+        {!useNativeAudio && nextTrack && nextTrack.id !== currentTrack.id && (
           <div className="fixed -left-[9999px] -top-[9999px] w-[1px] h-[1px]">
             <iframe
               ref={preloadIframeRef}
               key={`preload-${nextTrack.id}`}
-              src={`https://www.youtube.com/embed/${nextTrack.id}?autoplay=0&rel=0&modestbranding=1&enablejsapi=1&playsinline=1&widget_referrer=${encodeURIComponent(window.location.origin)}&origin=${encodeURIComponent(window.location.origin)}`}
+              src={`https://www.youtube.com/embed/${nextTrack.id}?autoplay=0&rel=0&modestbranding=1&enablejsapi=1&playsinline=1&fs=0&widget_referrer=${encodeURIComponent(window.location.origin)}&origin=${encodeURIComponent(window.location.origin)}`}
               className="w-full h-full"
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-              allowFullScreen
               title={`Preload: ${nextTrack.title}`}
             />
           </div>
