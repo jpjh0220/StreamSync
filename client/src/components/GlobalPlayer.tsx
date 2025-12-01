@@ -277,6 +277,10 @@ export function GlobalPlayer() {
     // Add to play history when track changes
     if (currentTrack) {
       addToHistory(currentTrack);
+      // Show playing notification
+      toast.success(`🎵 Now Playing: ${currentTrack.title}`, {
+        duration: 3000,
+      });
     }
   }, [currentTrack?.id, currentTrack, addToHistory]);
 
@@ -339,7 +343,12 @@ export function GlobalPlayer() {
 
   return (
     <div className="fixed bottom-20 left-0 right-0 z-40 px-4 pb-4">
-      <Card className="bg-zinc-900/95 backdrop-blur border-zinc-800 overflow-hidden">
+      <Card className="bg-zinc-900/95 backdrop-blur border-zinc-800 overflow-hidden relative">
+        {/* Now Playing Indicator */}
+        {isPlaying && (
+          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-purple-600 via-pink-600 to-purple-600 animate-pulse" />
+        )}
+
         {/* Video Player - Hidden but playing */}
         <div className="w-0 h-0 overflow-hidden">
           <iframe
@@ -366,7 +375,14 @@ export function GlobalPlayer() {
               }}
             />
             <div className="flex-1 min-w-0">
-              <h4 className="text-sm font-semibold truncate text-white">{currentTrack.title}</h4>
+              <div className="flex items-center gap-2">
+                <h4 className="text-sm font-semibold truncate text-white">{currentTrack.title}</h4>
+                {isPlaying && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-600 text-white font-semibold animate-pulse shrink-0">
+                    PLAYING
+                  </span>
+                )}
+              </div>
               <p className="text-xs text-zinc-400 truncate">{currentTrack.artist}</p>
               <div className="flex items-center gap-2 mt-1">
                 <span className="text-xs px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-300">

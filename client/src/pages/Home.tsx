@@ -29,6 +29,7 @@ export default function Home() {
     recentSearches,
     addRecentSearch,
     clearRecentSearches,
+    currentTrack,
   } = usePlayer();
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearching, setIsSearching] = useState(false);
@@ -296,20 +297,40 @@ export default function Home() {
               Showing {filteredResults.length} of {searchResults.length} results
             </div>
             <div className="space-y-3">
-              {filteredResults.map((track) => (
+              {filteredResults.map((track) => {
+                const isCurrentTrack = currentTrack?.id === track.id;
+                return (
               <Card
                 key={`${track.source}-${track.id}`}
-                className="bg-zinc-900/50 border-zinc-800 p-4 hover:bg-zinc-800/50 cursor-pointer"
+                className={`p-4 hover:bg-zinc-800/50 cursor-pointer transition-all ${
+                  isCurrentTrack
+                    ? 'bg-purple-900/30 border-purple-600 ring-2 ring-purple-600/50'
+                    : 'bg-zinc-900/50 border-zinc-800'
+                }`}
                 onClick={() => handlePlayTrack(track)}
               >
                 <div className="flex items-center gap-4">
-                  <img
-                    src={track.thumbnail}
-                    alt={track.title}
-                    className="w-16 h-16 rounded object-cover"
-                  />
+                  <div className="relative">
+                    <img
+                      src={track.thumbnail}
+                      alt={track.title}
+                      className="w-16 h-16 rounded object-cover"
+                    />
+                    {isCurrentTrack && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/50 rounded">
+                        <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse" />
+                      </div>
+                    )}
+                  </div>
                   <div className="flex-1 min-w-0">
-                    <h4 className="font-semibold truncate">{track.title}</h4>
+                    <div className="flex items-center gap-2">
+                      <h4 className="font-semibold truncate">{track.title}</h4>
+                      {isCurrentTrack && (
+                        <span className="text-[10px] px-2 py-1 rounded bg-green-600 text-white font-semibold shrink-0">
+                          NOW PLAYING
+                        </span>
+                      )}
+                    </div>
                     <p className="text-sm text-zinc-400 truncate">{track.artist}</p>
                     <div className="flex items-center gap-2 mt-1">
                       <span className="text-xs px-2 py-0.5 rounded bg-zinc-800">
@@ -349,7 +370,8 @@ export default function Home() {
                   </Button>
                 </div>
               </Card>
-              ))}
+                );
+              })}
             </div>
           </>
         )}
