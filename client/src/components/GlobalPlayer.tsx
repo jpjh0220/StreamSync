@@ -29,6 +29,7 @@ export function GlobalPlayer() {
     hasPrevious,
     nextTrack,
     queue,
+    addToQueue,
     removeFromQueue,
     clearQueue,
     currentIndex,
