@@ -53,12 +53,10 @@ export function GlobalPlayer() {
   const [playlistName, setPlaylistName] = useState("");
   const [playlistDescription, setPlaylistDescription] = useState("");
   const [isSavingPlaylist, setIsSavingPlaylist] = useState(false);
-  const iframeRef = useRef<HTMLIFrameElement>(null);
-  const preloadIframeRef = useRef<HTMLIFrameElement>(null); // For gapless playback
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
-  const [useNativeAudio, setUseNativeAudio] = useState(true); // Prefer native audio
+  const [isLoadingAudio, setIsLoadingAudio] = useState(false);
 
   const createPlaylistMutation = trpc.playlists.create.useMutation();
   const addTrackToPlaylistMutation = trpc.playlists.addTrack.useMutation();
@@ -92,82 +90,44 @@ export function GlobalPlayer() {
     }
   };
 
-  const sendCommand = useCallback((command: string) => {
-    if (iframeRef.current?.contentWindow) {
-      iframeRef.current.contentWindow.postMessage(
-        JSON.stringify({ event: 'command', func: command, args: '' }),
-        '*'
-      );
-    }
-  }, []);
-
   const togglePlayPause = useCallback(() => {
-    if (useNativeAudio && audioRef.current) {
-      // Control native audio element
-      if (isPlaying) {
-        audioRef.current.pause();
-        setIsPlaying(false);
-      } else {
-        audioRef.current.play().catch(err => {
-          console.error('Audio play failed:', err);
-          toast.error('Failed to play audio');
-        });
-        setIsPlaying(true);
-      }
+    if (!audioRef.current) return;
+
+    if (isPlaying) {
+      audioRef.current.pause();
+      setIsPlaying(false);
     } else {
-      // Fallback to iframe control
-      if (isPlaying) {
-        sendCommand('pauseVideo');
-        setIsPlaying(false);
-      } else {
-        sendCommand('playVideo');
-        setIsPlaying(true);
-      }
+      audioRef.current.play().catch(err => {
+        console.error('Audio play failed:', err);
+        toast.error('Failed to play audio');
+      });
+      setIsPlaying(true);
     }
-  }, [isPlaying, sendCommand, useNativeAudio]);
+  }, [isPlaying]);
 
   const toggleMute = useCallback(() => {
-    if (useNativeAudio && audioRef.current) {
-      audioRef.current.muted = !isMuted;
-      setIsMuted(!isMuted);
-    } else {
-      if (isMuted) {
-        sendCommand('unMute');
-        setIsMuted(false);
-      } else {
-        sendCommand('mute');
-        setIsMuted(true);
-      }
-    }
-  }, [isMuted, sendCommand, useNativeAudio]);
+    if (!audioRef.current) return;
+    audioRef.current.muted = !isMuted;
+    setIsMuted(!isMuted);
+  }, [isMuted]);
 
   const volumeUp = useCallback(() => {
     const newVolume = Math.min(100, volume + 10);
     setVolume(newVolume);
-    if (useNativeAudio && audioRef.current) {
+    if (audioRef.current) {
       audioRef.current.volume = newVolume / 100;
-    } else if (iframeRef.current?.contentWindow) {
-      iframeRef.current.contentWindow.postMessage(
-        JSON.stringify({ event: 'command', func: 'setVolume', args: [newVolume] }),
-        '*'
-      );
     }
     if (isMuted && newVolume > 0) setIsMuted(false);
-  }, [volume, isMuted, useNativeAudio]);
+  }, [volume, isMuted]);
 
   const volumeDown = useCallback(() => {
     const newVolume = Math.max(0, volume - 10);
     setVolume(newVolume);
-    if (useNativeAudio && audioRef.current) {
+    if (audioRef.current) {
       audioRef.current.volume = newVolume / 100;
-    } else if (iframeRef.current?.contentWindow) {
-      iframeRef.current.contentWindow.postMessage(
-        JSON.stringify({ event: 'command', func: 'setVolume', args: [newVolume] }),
-        '*'
-      );
     }
     if (newVolume === 0) setIsMuted(true);
-  }, [volume, useNativeAudio]);
+  }, [volume]);
 
   // Keyboard shortcuts
   useKeyboardShortcuts({
@@ -182,13 +142,8 @@ export function GlobalPlayer() {
   const handleVolumeChange = (value: number[]) => {
     const newVolume = value[0];
     setVolume(newVolume);
-    if (useNativeAudio && audioRef.current) {
+    if (audioRef.current) {
       audioRef.current.volume = newVolume / 100;
-    } else if (iframeRef.current?.contentWindow) {
-      iframeRef.current.contentWindow.postMessage(
-        JSON.stringify({ event: 'command', func: 'setVolume', args: [newVolume] }),
-        '*'
-      );
     }
     if (newVolume === 0) {
       setIsMuted(true);
@@ -289,39 +244,33 @@ export function GlobalPlayer() {
     });
 
     const handlePlay = () => {
-      if (useNativeAudio && audioRef.current) {
+      if (audioRef.current) {
         audioRef.current.play();
-        setIsPlaying(true);
-      } else {
-        sendCommand('playVideo');
         setIsPlaying(true);
       }
     };
 
     const handlePause = () => {
-      if (useNativeAudio && audioRef.current) {
+      if (audioRef.current) {
         audioRef.current.pause();
-        setIsPlaying(false);
-      } else {
-        sendCommand('pauseVideo');
         setIsPlaying(false);
       }
     };
 
     const handleSeekTo = (details: any) => {
-      if (useNativeAudio && audioRef.current && details.seekTime !== undefined) {
+      if (audioRef.current && details.seekTime !== undefined) {
         audioRef.current.currentTime = details.seekTime;
       }
     };
 
     const handleSeekBackward = () => {
-      if (useNativeAudio && audioRef.current) {
+      if (audioRef.current) {
         audioRef.current.currentTime = Math.max(0, audioRef.current.currentTime - 10);
       }
     };
 
     const handleSeekForward = () => {
-      if (useNativeAudio && audioRef.current) {
+      if (audioRef.current) {
         audioRef.current.currentTime = Math.min(audioRef.current.duration, audioRef.current.currentTime + 10);
       }
     };
@@ -330,13 +279,9 @@ export function GlobalPlayer() {
     navigator.mediaSession.setActionHandler('pause', handlePause);
     navigator.mediaSession.setActionHandler('nexttrack', hasNext ? playNext : null);
     navigator.mediaSession.setActionHandler('previoustrack', hasPrevious ? playPrevious : null);
-
-    // Advanced controls (seeking) - only for native audio
-    if (useNativeAudio) {
-      navigator.mediaSession.setActionHandler('seekto', handleSeekTo);
-      navigator.mediaSession.setActionHandler('seekbackward', handleSeekBackward);
-      navigator.mediaSession.setActionHandler('seekforward', handleSeekForward);
-    }
+    navigator.mediaSession.setActionHandler('seekto', handleSeekTo);
+    navigator.mediaSession.setActionHandler('seekbackward', handleSeekBackward);
+    navigator.mediaSession.setActionHandler('seekforward', handleSeekForward);
 
     return () => {
       navigator.mediaSession.metadata = null;
@@ -348,9 +293,9 @@ export function GlobalPlayer() {
       navigator.mediaSession.setActionHandler('seekbackward', null);
       navigator.mediaSession.setActionHandler('seekforward', null);
     };
-  }, [currentTrack, hasNext, hasPrevious, playNext, playPrevious, useNativeAudio]);
+  }, [currentTrack, hasNext, hasPrevious, playNext, playPrevious]);
 
-  // Fetch audio stream URL for native audio playback
+  // Fetch audio stream URL for audio-only playback
   useEffect(() => {
     if (!currentTrack || currentTrack.source !== 'youtube') {
       setAudioUrl(null);
@@ -358,16 +303,19 @@ export function GlobalPlayer() {
     }
 
     const fetchAudioUrl = async () => {
+      setIsLoadingAudio(true);
+      setError(false);
       try {
         const streamData = await getYouTubeStreamMutation.mutateAsync({
           videoId: currentTrack.id
         });
         setAudioUrl(streamData.url);
-        setUseNativeAudio(true);
+        setIsLoadingAudio(false);
       } catch (error) {
-        console.warn('Failed to get audio stream, falling back to iframe:', error);
-        setAudioUrl(null);
-        setUseNativeAudio(false);
+        console.error('Failed to get audio stream:', error);
+        setError(true);
+        setIsLoadingAudio(false);
+        toast.error('Unable to load audio stream. Video may be restricted or unavailable.');
       }
     };
 
@@ -390,38 +338,10 @@ export function GlobalPlayer() {
 
   // Set playback speed when it changes
   useEffect(() => {
-    if (useNativeAudio && audioRef.current) {
+    if (audioRef.current) {
       audioRef.current.playbackRate = playbackSpeed;
-    } else if (iframeRef.current?.contentWindow) {
-      iframeRef.current.contentWindow.postMessage(
-        JSON.stringify({ event: 'command', func: 'setPlaybackRate', args: [playbackSpeed] }),
-        '*'
-      );
     }
-  }, [playbackSpeed, currentTrack?.id, useNativeAudio]);
-
-  // Auto-play next track when video ends
-  useEffect(() => {
-    if (!iframeRef.current) return;
-
-    const handleMessage = (event: MessageEvent) => {
-      try {
-        const data = JSON.parse(event.data);
-        // YouTube sends state change events: 0 = ended, 1 = playing, 2 = paused
-        if (data.event === 'onStateChange' && data.info === 0) {
-          // Video ended - play next if available
-          if (hasNext || repeatMode !== 'off') {
-            playNext();
-          }
-        }
-      } catch {
-        // Ignore parse errors
-      }
-    };
-
-    window.addEventListener('message', handleMessage);
-    return () => window.removeEventListener('message', handleMessage);
-  }, [hasNext, playNext, repeatMode]);
+  }, [playbackSpeed, currentTrack?.id]);
 
   // Initialize Audio Context for iOS (keeps audio system engaged)
   useEffect(() => {
@@ -499,66 +419,6 @@ export function GlobalPlayer() {
     fetchRelatedTracks();
   }, [radioMode, currentTrack?.id, currentIndex, queue.length]);
 
-  // Keep playing when tab/app loses focus (background playback)
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      // If music was playing and tab becomes visible again, ensure it's still playing
-      if (!document.hidden && isPlaying && iframeRef.current?.contentWindow) {
-        // Resume audio context first (iOS requirement)
-        if (audioContextRef.current?.state === 'suspended') {
-          audioContextRef.current.resume();
-        }
-
-        // Then resume video playback
-        setTimeout(() => {
-          iframeRef.current?.contentWindow?.postMessage(
-            JSON.stringify({ event: 'command', func: 'playVideo', args: '' }),
-            '*'
-          );
-        }, 100);
-      }
-    };
-
-    const handlePageShow = (e: PageTransitionEvent) => {
-      // Handle iOS back/forward cache (bfcache)
-      if (e.persisted && isPlaying && iframeRef.current?.contentWindow) {
-        if (audioContextRef.current?.state === 'suspended') {
-          audioContextRef.current.resume();
-        }
-        setTimeout(() => {
-          iframeRef.current?.contentWindow?.postMessage(
-            JSON.stringify({ event: 'command', func: 'playVideo', args: '' }),
-            '*'
-          );
-        }, 100);
-      }
-    };
-
-    const handleFocus = () => {
-      // Aggressively resume on window focus
-      if (isPlaying && iframeRef.current?.contentWindow) {
-        if (audioContextRef.current?.state === 'suspended') {
-          audioContextRef.current.resume();
-        }
-        setTimeout(() => {
-          iframeRef.current?.contentWindow?.postMessage(
-            JSON.stringify({ event: 'command', func: 'playVideo', args: '' }),
-            '*'
-          );
-        }, 100);
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    window.addEventListener('pageshow', handlePageShow);
-    window.addEventListener('focus', handleFocus);
-
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      window.removeEventListener('pageshow', handlePageShow);
-      window.removeEventListener('focus', handleFocus);
-    };
-  }, [isPlaying]);
 
   if (!currentTrack) return null;
 
@@ -568,16 +428,61 @@ export function GlobalPlayer() {
         <Card className="bg-red-900/95 backdrop-blur border-red-800 p-4">
           <div className="flex items-center justify-between">
             <div className="flex-1">
-              <p className="text-sm font-semibold text-white">Failed to load video</p>
-              <p className="text-xs text-red-200">This video may be unavailable or restricted</p>
+              <p className="text-sm font-semibold text-white">Failed to load audio</p>
+              <p className="text-xs text-red-200">This audio may be unavailable, restricted, or region-locked</p>
             </div>
-            <Button
-              size="icon"
-              variant="ghost"
-              onClick={handleClose}
-            >
-              <X className="w-5 h-5 text-white" />
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setError(false);
+                  // Retry audio fetch
+                  const retryFetch = async () => {
+                    setIsLoadingAudio(true);
+                    try {
+                      const streamData = await getYouTubeStreamMutation.mutateAsync({
+                        videoId: currentTrack.id
+                      });
+                      setAudioUrl(streamData.url);
+                      setIsLoadingAudio(false);
+                    } catch (err) {
+                      setError(true);
+                      setIsLoadingAudio(false);
+                    }
+                  };
+                  retryFetch();
+                }}
+                className="border-red-600 hover:bg-red-800"
+              >
+                Retry
+              </Button>
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={handleClose}
+              >
+                <X className="w-5 h-5 text-white" />
+              </Button>
+            </div>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
+  if (isLoadingAudio) {
+    return (
+      <div className="fixed bottom-20 left-0 right-0 z-40 px-4 pb-4">
+        <Card className="bg-zinc-900/95 backdrop-blur border-zinc-800 p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-white">Loading audio stream...</p>
+              <p className="text-xs text-zinc-400">Extracting audio from YouTube</p>
+            </div>
+            <div className="flex items-center">
+              <div className="w-5 h-5 border-2 border-purple-600 border-t-transparent rounded-full animate-spin"></div>
+            </div>
           </div>
         </Card>
       </div>
@@ -592,8 +497,8 @@ export function GlobalPlayer() {
           <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-purple-600 via-pink-600 to-purple-600 animate-pulse" />
         )}
 
-        {/* Native Audio Element for true background playback */}
-        {useNativeAudio && audioUrl && (
+        {/* Native Audio Element for audio-only playback */}
+        {audioUrl && (
           <audio
             ref={audioRef}
             src={audioUrl}
@@ -608,10 +513,9 @@ export function GlobalPlayer() {
               }
             }}
             onError={(e) => {
-              console.error('Native audio error:', e);
-              toast.error('Audio playback failed, switching to iframe mode');
-              setUseNativeAudio(false);
-              setAudioUrl(null);
+              console.error('Audio playback error:', e);
+              setError(true);
+              toast.error('Audio playback failed');
             }}
             onVolumeChange={(e) => {
               const audio = e.currentTarget;
@@ -635,35 +539,6 @@ export function GlobalPlayer() {
             }}
             className="hidden"
           />
-        )}
-
-        {/* Video Player - Fallback iframe for when native audio fails */}
-        {!useNativeAudio && (
-          <div className="fixed -left-[9999px] -top-[9999px] w-[1px] h-[1px]">
-            <iframe
-              ref={iframeRef}
-              key={currentTrack.id}
-              src={`https://www.youtube.com/embed/${currentTrack.id}?autoplay=1&rel=0&modestbranding=1&enablejsapi=1&playsinline=1&fs=0&widget_referrer=${encodeURIComponent(window.location.origin)}&origin=${encodeURIComponent(window.location.origin)}`}
-              className="w-full h-full"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-              title={currentTrack.title}
-              onError={() => setError(true)}
-            />
-          </div>
-        )}
-
-        {/* Preload next track for gapless playback - only for iframe mode */}
-        {!useNativeAudio && nextTrack && nextTrack.id !== currentTrack.id && (
-          <div className="fixed -left-[9999px] -top-[9999px] w-[1px] h-[1px]">
-            <iframe
-              ref={preloadIframeRef}
-              key={`preload-${nextTrack.id}`}
-              src={`https://www.youtube.com/embed/${nextTrack.id}?autoplay=0&rel=0&modestbranding=1&enablejsapi=1&playsinline=1&fs=0&widget_referrer=${encodeURIComponent(window.location.origin)}&origin=${encodeURIComponent(window.location.origin)}`}
-              className="w-full h-full"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-              title={`Preload: ${nextTrack.title}`}
-            />
-          </div>
         )}
 
         {/* Mini Player UI */}
