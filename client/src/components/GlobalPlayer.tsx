@@ -55,8 +55,10 @@ export function GlobalPlayer() {
   const [isSavingPlaylist, setIsSavingPlaylist] = useState(false);
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [isLoadingAudio, setIsLoadingAudio] = useState(false);
+  const [useIframeFallback, setUseIframeFallback] = useState(false);
 
   const createPlaylistMutation = trpc.playlists.create.useMutation();
   const addTrackToPlaylistMutation = trpc.playlists.addTrack.useMutation();
@@ -90,44 +92,74 @@ export function GlobalPlayer() {
     }
   };
 
-  const togglePlayPause = useCallback(() => {
-    if (!audioRef.current) return;
-
-    if (isPlaying) {
-      audioRef.current.pause();
-      setIsPlaying(false);
-    } else {
-      audioRef.current.play().catch(err => {
-        console.error('Audio play failed:', err);
-        toast.error('Failed to play audio');
-      });
-      setIsPlaying(true);
+  const sendCommand = useCallback((command: string, args: any = '') => {
+    if (iframeRef.current?.contentWindow) {
+      iframeRef.current.contentWindow.postMessage(
+        JSON.stringify({ event: 'command', func: command, args }),
+        '*'
+      );
     }
-  }, [isPlaying]);
+  }, []);
+
+  const togglePlayPause = useCallback(() => {
+    if (useIframeFallback) {
+      if (isPlaying) {
+        sendCommand('pauseVideo');
+        setIsPlaying(false);
+      } else {
+        sendCommand('playVideo');
+        setIsPlaying(true);
+      }
+    } else if (audioRef.current) {
+      if (isPlaying) {
+        audioRef.current.pause();
+        setIsPlaying(false);
+      } else {
+        audioRef.current.play().catch(err => {
+          console.error('Audio play failed:', err);
+          toast.error('Failed to play audio');
+        });
+        setIsPlaying(true);
+      }
+    }
+  }, [isPlaying, useIframeFallback, sendCommand]);
 
   const toggleMute = useCallback(() => {
-    if (!audioRef.current) return;
-    audioRef.current.muted = !isMuted;
-    setIsMuted(!isMuted);
-  }, [isMuted]);
+    if (useIframeFallback) {
+      if (isMuted) {
+        sendCommand('unMute');
+        setIsMuted(false);
+      } else {
+        sendCommand('mute');
+        setIsMuted(true);
+      }
+    } else if (audioRef.current) {
+      audioRef.current.muted = !isMuted;
+      setIsMuted(!isMuted);
+    }
+  }, [isMuted, useIframeFallback, sendCommand]);
 
   const volumeUp = useCallback(() => {
     const newVolume = Math.min(100, volume + 10);
     setVolume(newVolume);
-    if (audioRef.current) {
+    if (useIframeFallback) {
+      sendCommand('setVolume', newVolume);
+    } else if (audioRef.current) {
       audioRef.current.volume = newVolume / 100;
     }
     if (isMuted && newVolume > 0) setIsMuted(false);
-  }, [volume, isMuted]);
+  }, [volume, isMuted, useIframeFallback, sendCommand]);
 
   const volumeDown = useCallback(() => {
     const newVolume = Math.max(0, volume - 10);
     setVolume(newVolume);
-    if (audioRef.current) {
+    if (useIframeFallback) {
+      sendCommand('setVolume', newVolume);
+    } else if (audioRef.current) {
       audioRef.current.volume = newVolume / 100;
     }
     if (newVolume === 0) setIsMuted(true);
-  }, [volume]);
+  }, [volume, useIframeFallback, sendCommand]);
 
   // Keyboard shortcuts
   useKeyboardShortcuts({
@@ -142,7 +174,9 @@ export function GlobalPlayer() {
   const handleVolumeChange = (value: number[]) => {
     const newVolume = value[0];
     setVolume(newVolume);
-    if (audioRef.current) {
+    if (useIframeFallback) {
+      sendCommand('setVolume', newVolume);
+    } else if (audioRef.current) {
       audioRef.current.volume = newVolume / 100;
     }
     if (newVolume === 0) {
@@ -295,27 +329,35 @@ export function GlobalPlayer() {
     };
   }, [currentTrack, hasNext, hasPrevious, playNext, playPrevious]);
 
-  // Fetch audio stream URL for audio-only playback
+  // Fetch audio stream URL, fallback to iframe if extraction fails
   useEffect(() => {
     if (!currentTrack || currentTrack.source !== 'youtube') {
       setAudioUrl(null);
+      setUseIframeFallback(false);
       return;
     }
 
     const fetchAudioUrl = async () => {
       setIsLoadingAudio(true);
       setError(false);
+      setUseIframeFallback(false);
+
       try {
         const streamData = await getYouTubeStreamMutation.mutateAsync({
           videoId: currentTrack.id
         });
         setAudioUrl(streamData.url);
         setIsLoadingAudio(false);
+        setUseIframeFallback(false);
+        console.log('✅ Using native audio stream');
       } catch (error) {
-        console.error('Failed to get audio stream:', error);
-        setError(true);
+        console.warn('❌ Audio extraction failed, falling back to iframe:', error);
+        setAudioUrl(null);
         setIsLoadingAudio(false);
-        toast.error('Unable to load audio stream. Video may be restricted or unavailable.');
+        setUseIframeFallback(true);
+        toast.info('Using video player mode (audio extraction unavailable)', {
+          duration: 2000
+        });
       }
     };
 
@@ -338,10 +380,12 @@ export function GlobalPlayer() {
 
   // Set playback speed when it changes
   useEffect(() => {
-    if (audioRef.current) {
+    if (useIframeFallback) {
+      sendCommand('setPlaybackRate', playbackSpeed);
+    } else if (audioRef.current) {
       audioRef.current.playbackRate = playbackSpeed;
     }
-  }, [playbackSpeed, currentTrack?.id]);
+  }, [playbackSpeed, currentTrack?.id, useIframeFallback, sendCommand]);
 
   // Initialize Audio Context for iOS (keeps audio system engaged)
   useEffect(() => {
@@ -422,73 +466,6 @@ export function GlobalPlayer() {
 
   if (!currentTrack) return null;
 
-  if (error) {
-    return (
-      <div className="fixed bottom-20 left-0 right-0 z-40 px-4 pb-4">
-        <Card className="bg-red-900/95 backdrop-blur border-red-800 p-4">
-          <div className="flex items-center justify-between">
-            <div className="flex-1">
-              <p className="text-sm font-semibold text-white">Failed to load audio</p>
-              <p className="text-xs text-red-200">This audio may be unavailable, restricted, or region-locked</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => {
-                  setError(false);
-                  // Retry audio fetch
-                  const retryFetch = async () => {
-                    setIsLoadingAudio(true);
-                    try {
-                      const streamData = await getYouTubeStreamMutation.mutateAsync({
-                        videoId: currentTrack.id
-                      });
-                      setAudioUrl(streamData.url);
-                      setIsLoadingAudio(false);
-                    } catch (err) {
-                      setError(true);
-                      setIsLoadingAudio(false);
-                    }
-                  };
-                  retryFetch();
-                }}
-                className="border-red-600 hover:bg-red-800"
-              >
-                Retry
-              </Button>
-              <Button
-                size="icon"
-                variant="ghost"
-                onClick={handleClose}
-              >
-                <X className="w-5 h-5 text-white" />
-              </Button>
-            </div>
-          </div>
-        </Card>
-      </div>
-    );
-  }
-
-  if (isLoadingAudio) {
-    return (
-      <div className="fixed bottom-20 left-0 right-0 z-40 px-4 pb-4">
-        <Card className="bg-zinc-900/95 backdrop-blur border-zinc-800 p-4">
-          <div className="flex items-center justify-between">
-            <div className="flex-1">
-              <p className="text-sm font-semibold text-white">Loading audio stream...</p>
-              <p className="text-xs text-zinc-400">Extracting audio from YouTube</p>
-            </div>
-            <div className="flex items-center">
-              <div className="w-5 h-5 border-2 border-purple-600 border-t-transparent rounded-full animate-spin"></div>
-            </div>
-          </div>
-        </Card>
-      </div>
-    );
-  }
-
   return (
     <div className="fixed bottom-20 left-0 right-0 z-40 px-4 pb-4">
       <Card className="bg-zinc-900/95 backdrop-blur border-zinc-800 overflow-hidden relative">
@@ -497,8 +474,8 @@ export function GlobalPlayer() {
           <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-purple-600 via-pink-600 to-purple-600 animate-pulse" />
         )}
 
-        {/* Native Audio Element for audio-only playback */}
-        {audioUrl && (
+        {/* Native Audio Element (preferred) */}
+        {audioUrl && !useIframeFallback && (
           <audio
             ref={audioRef}
             src={audioUrl}
@@ -513,9 +490,9 @@ export function GlobalPlayer() {
               }
             }}
             onError={(e) => {
-              console.error('Audio playback error:', e);
-              setError(true);
-              toast.error('Audio playback failed');
+              console.error('Audio playback error, switching to iframe:', e);
+              setUseIframeFallback(true);
+              toast.info('Switching to video player mode');
             }}
             onVolumeChange={(e) => {
               const audio = e.currentTarget;
@@ -539,6 +516,20 @@ export function GlobalPlayer() {
             }}
             className="hidden"
           />
+        )}
+
+        {/* Iframe Fallback (hidden, audio-only) */}
+        {useIframeFallback && (
+          <div className="w-0 h-0 overflow-hidden">
+            <iframe
+              ref={iframeRef}
+              key={currentTrack.id}
+              src={`https://www.youtube.com/embed/${currentTrack.id}?autoplay=1&rel=0&modestbranding=1&enablejsapi=1&playsinline=1&fs=0&controls=0`}
+              className="w-full h-full"
+              allow="autoplay; encrypted-media"
+              title={currentTrack.title}
+            />
+          </div>
         )}
 
         {/* Mini Player UI */}
