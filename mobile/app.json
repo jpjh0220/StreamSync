@@ -30,7 +30,19 @@
       "predictiveBackGestureEnabled": false
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro",
+      "output": "static",
+      "backgroundColor": "#09090b",
+      "themeColor": "#a855f7",
+      "name": "StreamSync",
+      "shortName": "StreamSync",
+      "description": "Music player with background audio playback",
+      "lang": "en",
+      "scope": "/",
+      "startUrl": "/",
+      "display": "standalone",
+      "orientation": "portrait"
     },
     "plugins": [
       [
