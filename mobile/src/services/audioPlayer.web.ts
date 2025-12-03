@@ -71,6 +71,12 @@ export const togglePlayback = async () => {
   }
 };
 
+export const pause = async () => {
+  if (audioElement && !audioElement.paused) {
+    audioElement.pause();
+  }
+};
+
 export const skipToNext = async () => {
   if (currentIndex < currentQueue.length - 1) {
     currentIndex++;
