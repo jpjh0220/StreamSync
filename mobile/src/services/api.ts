@@ -2,12 +2,29 @@ import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Track, Playlist } from '../types';
 
-// Update this to your server URL
-// For development: use your local IP address (not localhost)
-// e.g., 'http://192.168.1.100:3000' or use ngrok for remote testing
-const API_BASE_URL = process.env.NODE_ENV === 'development'
-  ? 'http://localhost:3000'
-  : 'https://your-production-url.com';
+// API URL configuration
+// Priority: ENV variable > window.location (web) > localhost (dev)
+const getApiBaseUrl = () => {
+  // 1. Use environment variable if set (for custom deployments)
+  if (process.env.REACT_APP_API_URL) {
+    return process.env.REACT_APP_API_URL;
+  }
+
+  // 2. For web platform, use same origin (works when deployed together)
+  if (typeof window !== 'undefined' && window.location) {
+    const origin = window.location.origin;
+    // If deployed on same domain as backend, use relative URL
+    return origin;
+  }
+
+  // 3. Default to localhost for development
+  return 'http://localhost:3000';
+};
+
+const API_BASE_URL = getApiBaseUrl();
+
+// Log the API URL being used for debugging
+console.log('[API] Using base URL:', API_BASE_URL);
 
 const api = axios.create({
   baseURL: API_BASE_URL,

@@ -168,13 +168,53 @@ The mobile app communicates with the existing StreamSync backend:
 - Manage favorites via `/api/tracks/*`
 - Manage playlists via `/api/playlists/*`
 
+## Deploying to Production
+
+### Web Deployment (PWA)
+
+The mobile app can be deployed as a Progressive Web App alongside the main StreamSync backend.
+
+#### Option 1: Deploy on Same Domain (Recommended)
+
+Export the web build and serve it from the same domain as your backend:
+
+```bash
+cd mobile
+npm install
+npm run export:web
+```
+
+This creates a `dist/` folder. Serve these static files from your backend:
+- The app will automatically use the same domain for API calls
+- No additional configuration needed
+
+#### Option 2: Deploy on Different Domain
+
+If deploying separately, set the backend URL:
+
+```bash
+# Create .env file
+echo "REACT_APP_API_URL=https://your-backend.com" > .env
+
+# Export with custom API URL
+npm run export:web
+```
+
+#### Deployment Services
+
+Works with: Vercel, Netlify, Cloudflare Pages, GitHub Pages, or any static host.
+
+**Important**: Make sure your backend is accessible from the deployed app domain. Check CORS settings if deploying separately.
+
 ## Troubleshooting
 
 ### Audio Not Playing
 - Check if backend server is running
-- Verify API_BASE_URL points to correct IP
-- Check network connectivity
+- Open browser console and check the `[API] Using base URL:` log message
+- Verify the API URL is correct for your deployment
+- Check network tab in browser dev tools for failed requests
 - Look at server logs for YouTube extraction errors
+- For CORS issues, ensure backend allows requests from your app's domain
 
 ### Background Audio Not Working
 - iOS: Ensure app.json has `UIBackgroundModes: ["audio"]`
