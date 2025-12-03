@@ -6,9 +6,11 @@ import * as AudioPlayer from '../services/audioPlayer';
 
 interface PlayerContextType {
   currentTrack: Track | null;
+  setCurrentTrack: (track: Track | null) => void;
   isPlaying: boolean;
   queue: Track[];
   currentIndex: number;
+  nextTrack: Track | null;
   addToQueue: (track: Track) => void;
   removeFromQueue: (index: number) => void;
   clearQueue: () => void;
@@ -29,6 +31,10 @@ interface PlayerContextType {
   addToHistory: (track: Track) => void;
   radioMode: boolean;
   toggleRadioMode: () => void;
+  sleepTimer: number | null; // seconds remaining
+  setSleepTimer: (minutes: number | null) => void;
+  playbackSpeed: number;
+  setPlaybackSpeed: (speed: number) => void;
 }
 
 const PlayerContext = createContext<PlayerContextType | undefined>(undefined);
@@ -43,6 +49,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [radioMode, setRadioMode] = useState(false);
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
   const [playHistory, setPlayHistory] = useState<Track[]>([]);
+  const [sleepTimerState, setSleepTimerState] = useState<number | null>(null); // seconds remaining
+  const [playbackSpeed, setPlaybackSpeedState] = useState<number>(1);
 
   // Initialize player on mount
   useEffect(() => {
@@ -238,11 +246,46 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setRadioMode((prev) => !prev);
   }, []);
 
+  const setSleepTimer = useCallback((minutes: number | null) => {
+    if (minutes === null) {
+      setSleepTimerState(null);
+    } else {
+      setSleepTimerState(minutes * 60); // Convert to seconds
+    }
+  }, []);
+
+  const setPlaybackSpeed = useCallback((speed: number) => {
+    setPlaybackSpeedState(speed);
+    // This will be handled in the player components
+  }, []);
+
+  // Sleep timer countdown
+  useEffect(() => {
+    if (sleepTimerState === null || sleepTimerState <= 0) return;
+
+    const interval = setInterval(() => {
+      setSleepTimerState(prev => {
+        if (prev === null || prev <= 1) {
+          // Timer reached 0, pause playback
+          AudioPlayer.pause();
+          return null;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [sleepTimerState]);
+
+  const nextTrack = currentIndex < queue.length - 1 ? queue[currentIndex + 1] : null;
+
   const value: PlayerContextType = {
     currentTrack,
+    setCurrentTrack,
     isPlaying,
     queue,
     currentIndex,
+    nextTrack,
     addToQueue,
     removeFromQueue,
     clearQueue,
@@ -263,6 +306,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     addToHistory,
     radioMode,
     toggleRadioMode,
+    sleepTimer: sleepTimerState,
+    setSleepTimer,
+    playbackSpeed,
+    setPlaybackSpeed,
   };
 
   return <PlayerContext.Provider value={value}>{children}</PlayerContext.Provider>;

@@ -6,6 +6,8 @@ import { StatusBar } from 'expo-status-bar';
 import { PlayerProvider } from './src/contexts/PlayerContext';
 import SearchScreen from './src/screens/SearchScreen';
 import LibraryScreen from './src/screens/LibraryScreen';
+import HistoryScreen from './src/screens/HistoryScreen';
+import StatsScreen from './src/screens/StatsScreen';
 import GlobalPlayer from './src/components/GlobalPlayer';
 import { colors } from './src/theme/colors';
 import { setupPlayer } from './src/services/audioPlayer';
@@ -40,6 +42,24 @@ function AppNavigator() {
             options={{
               tabBarIcon: ({ color }) => (
                 <Text style={{ fontSize: 24 }}>📚</Text>
+              ),
+            }}
+          />
+          <Tab.Screen
+            name="History"
+            component={HistoryScreen}
+            options={{
+              tabBarIcon: ({ color }) => (
+                <Text style={{ fontSize: 24 }}>🕐</Text>
+              ),
+            }}
+          />
+          <Tab.Screen
+            name="Stats"
+            component={StatsScreen}
+            options={{
+              tabBarIcon: ({ color }) => (
+                <Text style={{ fontSize: 24 }}>📊</Text>
               ),
             }}
           />
