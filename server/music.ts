@@ -82,26 +82,63 @@ export async function searchYouTube(query: string, limit: number = 10) {
  */
 export async function getYouTubeStreamUrl(videoId: string) {
   try {
+    console.log(`[Audio Extract] Fetching stream for video: ${videoId}`);
     const yt = await getYouTubeClient();
+
+    console.log(`[Audio Extract] Getting video info...`);
     const info = await yt.getInfo(videoId);
-    
+
+    console.log(`[Audio Extract] Video title: ${info.basic_info.title}`);
+    console.log(`[Audio Extract] Video playability status: ${info.playability_status?.status}`);
+
+    // Check if video is playable
+    if (info.playability_status?.status !== 'OK') {
+      console.error(`[Audio Extract] Video not playable:`, {
+        status: info.playability_status?.status,
+        reason: info.playability_status?.reason,
+        errorScreen: info.playability_status?.error_screen,
+      });
+      throw new Error(`Video unavailable: ${info.playability_status?.reason || 'Unknown reason'}`);
+    }
+
     // Get audio-only format with best quality
-    const format = info.chooseFormat({ 
+    console.log(`[Audio Extract] Available formats count: ${info.streaming_data?.formats?.length || 0} regular, ${info.streaming_data?.adaptive_formats?.length || 0} adaptive`);
+
+    const format = info.chooseFormat({
       type: 'audio',
       quality: 'best'
     });
 
+    if (!format) {
+      console.error(`[Audio Extract] No audio format found for video ${videoId}`);
+      throw new Error('No audio format available for this video');
+    }
+
+    console.log(`[Audio Extract] Selected format:`, {
+      itag: format.itag,
+      mimeType: format.mime_type,
+      bitrate: format.bitrate,
+      hasUrl: !!format.url,
+      hasDecipher: !!format.decipher,
+    });
+
     let url: string;
-    
+
     // Try to get URL directly or decipher if needed
     if (format.url) {
+      console.log(`[Audio Extract] Using direct URL`);
       url = format.url;
     } else if (format.decipher) {
+      console.log(`[Audio Extract] Deciphering URL...`);
       url = await format.decipher(yt.session.player);
+      console.log(`[Audio Extract] URL deciphered successfully`);
     } else {
-      throw new Error('Unable to get stream URL');
+      console.error(`[Audio Extract] Format has neither URL nor decipher function`);
+      throw new Error('Unable to get stream URL - no URL or decipher function available');
     }
-    
+
+    console.log(`[Audio Extract] ✅ Successfully extracted audio stream for: ${info.basic_info.title}`);
+
     return {
       url: url,
       title: info.basic_info.title || '',
@@ -109,9 +146,16 @@ export async function getYouTubeStreamUrl(videoId: string) {
       duration: info.basic_info.duration || 0,
       thumbnail: info.basic_info.thumbnail?.[0]?.url || '',
     };
-  } catch (error) {
-    console.error('YouTube stream error:', error);
-    throw new Error('Failed to get YouTube stream');
+  } catch (error: any) {
+    console.error(`[Audio Extract] ❌ Error for video ${videoId}:`, {
+      message: error?.message,
+      name: error?.name,
+      stack: error?.stack?.split('\n').slice(0, 3).join('\n'),
+    });
+
+    // Provide more specific error message
+    const errorMessage = error?.message || 'Unknown error';
+    throw new Error(`Failed to extract audio: ${errorMessage}`);
   }
 }
 
