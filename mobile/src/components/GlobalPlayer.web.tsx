@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { View, Text, Image, TouchableOpacity, StyleSheet } from 'react-native';
 import { usePlayer } from '../contexts/PlayerContext';
+import { AudioEffectsButton } from './AudioEffects.web';
+import { AudioVisualizerButton } from './AudioVisualizer.web';
 
 export default function GlobalPlayer() {
   const {
@@ -32,6 +34,7 @@ export default function GlobalPlayer() {
   const [showQueue, setShowQueue] = useState(false);
   const [showSleepTimer, setShowSleepTimer] = useState(false);
   const [showPlaybackSpeed, setShowPlaybackSpeed] = useState(false);
+  const audioRef = useRef<HTMLAudioElement>(null);
 
   if (!currentTrack) return null;
 
@@ -241,6 +244,12 @@ export default function GlobalPlayer() {
             >
               📻
             </button>
+
+            {/* Audio Effects */}
+            <AudioEffectsButton audioRef={audioRef} />
+
+            {/* Audio Visualizer */}
+            <AudioVisualizerButton isPlaying={isPlaying} />
 
             {/* Favorite */}
             <button
