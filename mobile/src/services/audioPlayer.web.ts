@@ -1,6 +1,8 @@
 // Web implementation using HTML5 Audio
 // This file is used when running on web (audioPlayer.web.ts)
 
+import { getYouTubeStream } from './api';
+
 let audioElement: HTMLAudioElement | null = null;
 let currentQueue: any[] = [];
 let currentIndex = -1;
@@ -29,13 +31,27 @@ export const playTrack = async (track: any, startPosition?: number) => {
   currentQueue = [track];
   currentIndex = 0;
 
-  const url = track.url || track.streamUrl;
+  // Fetch stream URL for YouTube tracks
+  let url = track.url;
+  if (track.source === 'youtube' && !url) {
+    console.log(`[Web Player] Fetching stream URL for: ${track.title}`);
+    try {
+      const streamData = await getYouTubeStream(track.id);
+      url = streamData.url;
+    } catch (error) {
+      console.error('[Web Player] Error fetching stream:', error);
+      throw error;
+    }
+  }
+
   if (url) {
     audioElement!.src = url;
     if (startPosition) {
       audioElement!.currentTime = startPosition;
     }
     await audioElement!.play();
+  } else {
+    throw new Error('No URL available for playback');
   }
 };
 
