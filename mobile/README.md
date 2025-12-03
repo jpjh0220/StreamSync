@@ -9,7 +9,8 @@ Native mobile app for StreamSync with true background audio playback using React
 - ✅ **YouTube Audio Streaming** - Direct audio extraction from YouTube
 - ✅ **Queue Management** - Add tracks, manage queue, repeat modes
 - ✅ **Favorites & History** - Save your favorite tracks and view play history
-- ✅ **Cross-Platform** - Works on iOS and Android
+- ✅ **Cross-Platform** - Works on iOS, Android, **and Web** 🌐
+- ✅ **React Native Web** - Same codebase runs on web using HTML5 Audio
 
 ## Tech Stack
 
@@ -65,9 +66,18 @@ npm run android
 # Run on iOS (macOS only)
 npm run ios
 
-# Run on Web (limited functionality)
+# Run on Web (uses HTML5 Audio instead of native)
 npm run web
+
+# Export static web build
+npm run export:web
 ```
+
+**Web Platform Notes:**
+- Uses React Native Web to run the same code in browser
+- Audio playback uses HTML5 `<audio>` element instead of react-native-track-player
+- Platform-specific files (`.web.ts`) provide web implementations
+- All features work on web, but background audio is browser-limited
 
 #### Testing on Physical Device
 
